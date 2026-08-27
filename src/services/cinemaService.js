@@ -1,10 +1,6 @@
-import { cinemas, dates, movies, posters, times } from "../data/mockData";
+import { airports, airlines, cinemaBrands, cinemaLocations, cinemas, dates, flights, movies, posters, times } from "../data/mockData";
 import { BOOKING, DEFAULTS, UI_TEXT } from "../constants/app";
-
-const waitForMockResponse = (payload) =>
-  new Promise((resolve) => {
-    window.setTimeout(() => resolve(payload), DEFAULTS.MOCK_REQUEST_DELAY_MS);
-  });
+import { apiClient } from "./apiClient";
 
 const buildSeatRows = () =>
   Array.from({ length: DEFAULTS.SEAT_ROWS }, (_, rowIndex) =>
@@ -18,12 +14,12 @@ const buildSeatRows = () =>
 export const cinemaService = {
   async getInitialCatalog() {
     // TODO: Replace this fallback with GET /api/movies, GET /api/cinemas and GET /api/show-dates.
-    return waitForMockResponse({ movies, cinemas, dates, times });
+    return apiClient.get("/api/marketplace/catalog", { movies, cinemas, dates, times, cinemaBrands, cinemaLocations, airports, airlines });
   },
 
   async getCinemaDetails(cinemaName) {
     // TODO: Replace this fallback with GET /api/cinemas/:cinemaName.
-    return waitForMockResponse({
+    return apiClient.get(`/api/marketplace/cinemas/${encodeURIComponent(cinemaName)}`, {
       name: cinemaName,
       image: posters.love,
       description: UI_TEXT.CINEMA_DESCRIPTION,
@@ -51,12 +47,39 @@ export const cinemaService = {
           })),
       }));
 
-    return waitForMockResponse({ cinemaName, date, movies: showtimeMovies });
+    return apiClient.get(`/api/marketplace/showtimes?cinema=${encodeURIComponent(cinemaName)}&date=${encodeURIComponent(date)}`, { cinemaName, date, movies: showtimeMovies });
+  },
+
+  async getCinemaMarketplace() {
+    // TODO: Replace this fallback with GET /api/providers?type=cinema and GET /api/cinemas.
+    return apiClient.get("/api/marketplace/cinema-marketplace", { brands: cinemaBrands, locations: cinemaLocations });
+  },
+
+  async searchFlights(searchCriteria) {
+    // TODO: Replace this fallback with GET /api/flights/search and pass searchCriteria to airline provider adapters.
+    const enrichedFlights = flights.map((flight) => ({
+      ...flight,
+      provider: airlines.find((airline) => airline.id === flight.providerId),
+      searchCriteria,
+    }));
+    const query = `?origin=${encodeURIComponent(searchCriteria.originCode)}&destination=${encodeURIComponent(searchCriteria.destinationCode)}&departureDate=${encodeURIComponent(searchCriteria.departureDate)}`;
+    return apiClient.get(`/api/marketplace/flights/search${query}`, { flights: enrichedFlights, airports, searchCriteria });
+  },
+
+  async getFlightBookingDetails({ flightId, fareClass }) {
+    // TODO: Replace this fallback with GET /api/flights/:flightId/fares/:fareClass.
+    const flight = flights.find((item) => item.id === flightId) ?? flights[DEFAULTS.FLIGHT_RESULT_INDEX];
+    return apiClient.get(`/api/marketplace/flights/${encodeURIComponent(flightId)}?fareClass=${encodeURIComponent(fareClass)}`, { flight, fareClass, provider: airlines.find((airline) => airline.id === flight.providerId), fareOptions: [{ name: "Phổ thông", price: flight.price, baggage: flight.baggage }, { name: "Phổ thông đặc biệt", price: flight.price + 66000, baggage: flight.baggage }] });
+  },
+
+  async submitFlightPassengerDetails(payload) {
+    // TODO: Replace this fallback with POST /api/orders/flight/passengers.
+    return apiClient.post("/api/marketplace/orders/flight/passengers", payload, { ...payload, orderCode: "TH-2026-0827-0001" });
   },
 
   async getSeatLayout({ movieId, showtime }) {
     // TODO: Replace this fallback with GET /api/showtimes/:showtime/seats and reserve seats on the server.
-    return waitForMockResponse({
+    return apiClient.get(`/api/marketplace/showtimes/${encodeURIComponent(showtime)}/seats?movieId=${encodeURIComponent(movieId)}`, {
       movieId,
       showtime,
       seats: buildSeatRows(),
@@ -70,7 +93,7 @@ export const cinemaService = {
 
   async getCheckoutSummary({ movie, showtime, selectedSeats }) {
     // TODO: Replace this fallback with POST /api/checkout/summary and let the server calculate totals.
-    return waitForMockResponse({
+    return apiClient.post("/api/marketplace/checkout/summary", { movie, showtime, selectedSeats }, {
       customer: {
         name: "Nguyễn Trung Hiếu",
         phone: "0878939686",
@@ -93,7 +116,7 @@ export const cinemaService = {
 
   async createQrPayment({ amountThousand }) {
     // TODO: Replace this fallback with POST /api/payments/qr and use the QR payload returned by the gateway.
-    return waitForMockResponse({
+    return apiClient.post("/api/marketplace/payments/qr", { amount: amountThousand }, {
       amountThousand,
       transferContent: "Thanh toán hóa đơn 8010810505062121",
       accountNumber: "9652015644POA986E30",
@@ -104,6 +127,6 @@ export const cinemaService = {
 
   async submitAuth({ mode, payload }) {
     // TODO: Replace this fallback with POST /api/auth/login or POST /api/auth/register.
-    return waitForMockResponse({ mode, payload, isSuccessful: true });
+    return apiClient.post(`/api/marketplace/auth/${mode}`, payload, { mode, payload, isSuccessful: true });
   },
 };

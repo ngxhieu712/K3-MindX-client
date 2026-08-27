@@ -13,8 +13,15 @@ import AuthPage from "./pages/AuthPage";
 import BookingPage from "./pages/BookingPage";
 import PaymentPage from "./pages/PaymentPage";
 import QrPaymentPage from "./pages/QrPaymentPage";
+import MarketplaceHomePage from "./pages/MarketplaceHomePage";
+import FlightSearchPage from "./pages/FlightSearchPage";
+import FlightResultsPage from "./pages/FlightResultsPage";
+import FlightPassengerPage from "./pages/FlightPassengerPage";
+import CinemaMarketPage from "./pages/CinemaMarketPage";
+import MarketplaceHeader from "./components/layout/MarketplaceHeader";
 
 const PAGES_WITHOUT_FOOTER = Object.freeze([PAGE.BOOKING, PAGE.PAYMENT, PAGE.QR_PAYMENT]);
+const MARKETPLACE_PAGES = Object.freeze([PAGE.MARKETPLACE_HOME, PAGE.FLIGHT_SEARCH, PAGE.FLIGHT_RESULTS, PAGE.FLIGHT_PASSENGER]);
 
 function App() {
   const [catalog, setCatalog] = useState(null);
@@ -25,6 +32,9 @@ function App() {
   const [selectedTime, setSelectedTime] = useState(DEFAULTS.SHOWTIME);
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState(0);
+  const [flightSearchCriteria, setFlightSearchCriteria] = useState(null);
+  const [selectedFlight, setSelectedFlight] = useState(null);
+  const [selectedFareClass, setSelectedFareClass] = useState(DEFAULTS.FLIGHT_DEFAULT_CLASS);
   const [isBookingModalOpen, setBookingModalOpen] = useState(false);
 
   useEffect(() => {
@@ -55,19 +65,35 @@ function App() {
     setPage(PAGE.BOOKING);
   };
 
+  const searchFlights = (criteria) => {
+    setFlightSearchCriteria(criteria);
+    setPage(PAGE.FLIGHT_RESULTS);
+  };
+
+  const selectFlight = (flight, fareClass) => {
+    setSelectedFlight(flight);
+    setSelectedFareClass(fareClass);
+    setPage(PAGE.FLIGHT_PASSENGER);
+  };
+
   if (catalogStatus === REQUEST_STATUS.LOADING || !catalog || !activeMovie) return <div className="app-shell"><LoadingState label="Đang tải hệ thống đặt vé..." /></div>;
 
   const contentByPage = {
+    [PAGE.MARKETPLACE_HOME]: <MarketplaceHomePage onNavigate={setPage} />,
+    [PAGE.FLIGHT_SEARCH]: <FlightSearchPage airports={catalog.airports} onSearch={searchFlights} />,
+    [PAGE.FLIGHT_RESULTS]: <FlightResultsPage searchCriteria={flightSearchCriteria} onSelectFlight={selectFlight} onBack={() => setPage(PAGE.FLIGHT_SEARCH)} />,
+    [PAGE.FLIGHT_PASSENGER]: <FlightPassengerPage flight={selectedFlight} fareClass={selectedFareClass} onBack={() => setPage(PAGE.FLIGHT_RESULTS)} onComplete={() => setPage(PAGE.MARKETPLACE_HOME)} />,
     [PAGE.MOVIES]: <MoviesPage movies={catalog.movies} onBuy={startBooking} />,
     [PAGE.SHOWTIMES]: <ShowtimesPage cinema={cinema} dates={catalog.dates} onBuy={startBooking} />,
-    [PAGE.CINEMAS]: <CinemasPage cinema={cinema} onNavigate={setPage} />,
+    [PAGE.CINEMA_MARKET]: <CinemaMarketPage onSelectCinema={(cinemaName) => { setCinema(cinemaName); setPage(PAGE.CINEMA_DETAIL); }} />,
+    [PAGE.CINEMA_DETAIL]: <CinemasPage cinema={cinema} onNavigate={setPage} />,
     [PAGE.AUTH]: <AuthPage />,
     [PAGE.BOOKING]: <BookingPage movie={activeMovie} selectedTime={selectedTime} onNext={(seats) => { setSelectedSeats(seats); setPage(PAGE.PAYMENT); }} />,
     [PAGE.PAYMENT]: <PaymentPage movie={activeMovie} selectedTime={selectedTime} selectedSeats={selectedSeats} onBack={() => setPage(PAGE.BOOKING)} onPay={(amount) => { setPaymentAmount(amount); setPage(PAGE.QR_PAYMENT); }} />,
     [PAGE.QR_PAYMENT]: <QrPaymentPage amountThousand={paymentAmount} onCancel={() => setPage(PAGE.MOVIES)} />,
   };
 
-  return <div className="app-shell"><Header page={page} onNavigate={setPage} cinema={cinema} cinemas={catalog.cinemas} onCinemaChange={setCinema} />{contentByPage[page] ?? contentByPage[PAGE.MOVIES]}{!PAGES_WITHOUT_FOOTER.includes(page) && <Footer />}{isBookingModalOpen && <BookingModal movie={activeMovie} dates={catalog.dates} time={selectedTime} onClose={() => setBookingModalOpen(false)} onConfirm={confirmShowtime} />}</div>;
+  return <div className="app-shell">{MARKETPLACE_PAGES.includes(page) ? <MarketplaceHeader page={page} onNavigate={setPage} /> : <Header page={page} onNavigate={setPage} cinema={cinema} cinemas={catalog.cinemas} onCinemaChange={setCinema} />}{contentByPage[page] ?? contentByPage[PAGE.MARKETPLACE_HOME]}{!PAGES_WITHOUT_FOOTER.includes(page) && <Footer />}{isBookingModalOpen && <BookingModal movie={activeMovie} dates={catalog.dates} time={selectedTime} onClose={() => setBookingModalOpen(false)} onConfirm={confirmShowtime} />}</div>;
 }
 
 export default App;

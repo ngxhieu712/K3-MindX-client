@@ -1,7 +1,12 @@
 export const PAGE = Object.freeze({
+  MARKETPLACE_HOME: "marketplace-home",
+  FLIGHT_SEARCH: "flight-search",
+  FLIGHT_RESULTS: "flight-results",
+  FLIGHT_PASSENGER: "flight-passenger",
   MOVIES: "movies",
   SHOWTIMES: "showtimes",
-  CINEMAS: "cinemas",
+  CINEMA_MARKET: "cinema-market",
+  CINEMA_DETAIL: "cinema-detail",
   AUTH: "auth",
   BOOKING: "booking",
   PAYMENT: "payment",
@@ -27,7 +32,7 @@ export const REQUEST_STATUS = Object.freeze({
 });
 
 export const DEFAULTS = Object.freeze({
-  PAGE: PAGE.MOVIES,
+  PAGE: PAGE.MARKETPLACE_HOME,
   CINEMA_NAME: "Beta Mỹ Đình",
   SHOWTIME: "13:15",
   SELECTED_DATE_INDEX: 1,
@@ -49,6 +54,29 @@ export const DEFAULTS = Object.freeze({
   RESERVED_SEAT_START_ROW_INDEX: 4,
   RESERVED_SEAT_END_ROW_INDEX: 5,
   VIP_SEAT_PRICE_THOUSAND: 50,
+  FLIGHT_ADULT_COUNT: 1,
+  FLIGHT_CHILD_COUNT: 0,
+  FLIGHT_INFANT_COUNT: 0,
+  FLIGHT_DEFAULT_TRIP_TYPE: "round-trip",
+  FLIGHT_DEFAULT_CLASS: "economy",
+  FLIGHT_RESULT_COUNT: 4,
+  FLIGHT_RESULT_INDEX: 0,
+});
+
+export const SERVICE_TYPE = Object.freeze({ MOVIE: "movie", FLIGHT: "flight", HOTEL: "hotel", BUS: "bus" });
+
+export const FLIGHT_TRIP_TYPE = Object.freeze({ ONE_WAY: "one-way", ROUND_TRIP: "round-trip", MULTI_CITY: "multi-city" });
+
+export const FLIGHT_CLASS = Object.freeze({ ECONOMY: "economy", BUSINESS: "business" });
+
+export const DEFAULT_FLIGHT_SEARCH = Object.freeze({
+  originCode: "SGN",
+  destinationCode: "BKK",
+  departureDate: "28 thg 8, 2026",
+  returnDate: "30 thg 8, 2026",
+  tripType: FLIGHT_TRIP_TYPE.ROUND_TRIP,
+  passengerCount: 1,
+  flightClass: FLIGHT_CLASS.ECONOMY,
 });
 
 export const BOOKING = Object.freeze({
@@ -71,7 +99,7 @@ export const UI_TEXT = Object.freeze({
   NAVIGATION: [
     [PAGE.SHOWTIMES, "LỊCH CHIẾU THEO RẠP"],
     [PAGE.MOVIES, "PHIM"],
-    [PAGE.CINEMAS, "RẠP"],
+    [PAGE.CINEMA_MARKET, "RẠP"],
     ["prices", "GIÁ VÉ"],
     ["news", "TIN MỚI VÀ ƯU ĐÃI"],
     ["franchise", "NHƯỢNG QUYỀN"],
@@ -96,6 +124,16 @@ export const UI_TEXT = Object.freeze({
     "Rạp có vị trí thuận lợi, rất gần những trường đại học, cao đẳng và cấp 3 lớn tại Hà Nội. Beta Cinemas Mỹ Đình sở hữu tổng cộng 7 phòng chiếu tương đương hơn 800 ghế ngồi.",
     "Với địa điểm thuận lợi, cơ sở vật chất hiện đại, tiên tiến, mức giá ưu đãi, Beta Cinemas Mỹ Đình chắc chắn sẽ là địa điểm xem-ăn-chơi không thể bỏ qua của giới trẻ Hà Thành.",
   ],
+  MARKETPLACE_SERVICES: [
+    { type: SERVICE_TYPE.HOTEL, title: "Khách sạn", subtitle: "Lưu trú thoải mái, giá tốt" },
+    { type: SERVICE_TYPE.FLIGHT, title: "Vé máy bay", subtitle: "Săn chuyến bay giá tốt" },
+    { type: SERVICE_TYPE.BUS, title: "Vé xe khách", subtitle: "Di chuyển dễ dàng" },
+    { type: SERVICE_TYPE.MOVIE, title: "Vé xem phim", subtitle: "Đặt vé xem phim online" },
+  ],
+  FLIGHT_NAVIGATION: ["Khách sạn", "Vé máy bay", "Vé xe khách", "Đưa đón sân bay", "Cho thuê xe", "Hoạt động & Vui chơi", "Thêm"],
+  FLIGHT_HERO_TITLE: "Săn, tìm & đặt mua vé máy bay giá rẻ, nhiều deal hấp dẫn cùng TicketHub",
+  FLIGHT_SEARCH_HINT: "Cần gợi ý du lịch? Khám phá điểm đến bay →",
+  FLIGHT_CONTACT_PROMPT: "Thông tin liên hệ (nhận vé/phiếu thanh toán)",
 });
 
 export const formatMoney = (thousandAmount) => `${thousandAmount}.000 vnđ`;
