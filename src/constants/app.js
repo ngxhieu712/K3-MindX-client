@@ -1,4 +1,7 @@
 export const PAGE = Object.freeze({
+  HOME: "home",
+  CHAINS: "chains",
+  CINEMA_DETAIL: "cinema_detail",
   MOVIES: "movies",
   SHOWTIMES: "showtimes",
   CINEMAS: "cinemas",

@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { DEFAULTS, MOVIE_TAB } from "../constants/app";
 import MovieCard from "../components/movies/MovieCard";
 import MovieTabs from "../components/movies/MovieTabs";
+import Banner from "../components/common/Banner";
+import { banners, reviews } from "../data/mockData";
 
 function MoviesPage({ movies, onBuy }) {
   const [activeTab, setActiveTab] = useState(MOVIE_TAB.NOW);
@@ -18,10 +20,11 @@ function MoviesPage({ movies, onBuy }) {
 
   return (
     <main className="page movie-page">
+      <Banner banners={banners} />
       <MovieTabs activeTab={activeTab} onChange={setActiveTab} />
       <div className="movie-grid">
         {visibleMovies.map((movie) => (
-          <MovieCard movie={movie} onBuy={onBuy} key={movie.id} />
+          <MovieCard movie={movie} onBuy={onBuy} key={movie.id} movieReviews={reviews[movie.id] || []} />
         ))}
       </div>
     </main>
