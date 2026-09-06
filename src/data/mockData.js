@@ -28,6 +28,7 @@ export const chains = [
     logo: "🎬",
     color: "#e60012",
     description: "Hệ thống rạp chiếu phim Hàn Quốc hàng đầu Việt Nam",
+    promoText: "Giảm 30% vé 2D Thứ 6, T7, CN",
     cinemas: [
       { id: "cgv-vincom-ba-trieu", name: "CGV Vincom Bà Triệu", address: "191 Bà Triệu, Hai Bà Trưng, Hà Nội", distance: "1.2 km", screens: 8 },
       { id: "cgv-aeon-ha-dong", name: "CGV AEON Hà Đông", address: "Aeon Mall Hà Đông, Hà Nội", distance: "5.8 km", screens: 10 },
@@ -40,6 +41,7 @@ export const chains = [
     logo: "🎥",
     color: "#005b9f",
     description: "Chuỗi rạp chiếu phim Việt Nam với giá vé bình dân nhất",
+    promoText: "Vé từ 50K/vé 2D mỗi thứ 2",
     cinemas: [
       { id: "beta-thanh-xuan", name: "Beta Thanh Xuân", address: "Số 1 Nguyễn Tuân, Thanh Xuân, Hà Nội", distance: "0.8 km", screens: 5 },
       { id: "beta-my-dinh", name: "Beta Mỹ Đình", address: "Tầng hầm B1, Golden Palace, Mỹ Đình, Hà Nội", distance: "2.1 km", screens: 7 },

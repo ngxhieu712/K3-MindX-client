@@ -1,78 +1,113 @@
 import { useEffect, useState } from "react";
-import { PAGE, REQUEST_STATUS } from "../constants/app";
+import { REQUEST_STATUS, PAGE } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import LoadingState from "../components/common/LoadingState";
-import MoviePoster from "../components/movies/MoviePoster";
-import NearbyTheaters from "../components/common/NearbyTheaters";
 import { nearbyTheaters } from "../data/mockData";
+import Icon from "../components/common/Icon";
 
 function CinemasPage({ cinema, onNavigate }) {
-  const [cinemaData, setCinemaData] = useState(null);
-  const [requestStatus, setRequestStatus] = useState(REQUEST_STATUS.IDLE);
+  const [data, setData] = useState(null);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
 
   useEffect(() => {
-    let isCurrentRequest = true;
-    const loadCinemaDetails = async () => {
-      setRequestStatus(REQUEST_STATUS.LOADING);
-      const response = await cinemaService.getCinemaDetails(cinema);
-      if (isCurrentRequest) {
-        setCinemaData(response);
-        setRequestStatus(REQUEST_STATUS.SUCCESS);
-      }
-    };
-    loadCinemaDetails();
-    return () => { isCurrentRequest = false; };
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getCinemaDetails(cinema).then(res => {
+      if (alive) { setData(res); setStatus(REQUEST_STATUS.SUCCESS); }
+    });
+    return () => { alive = false; };
   }, [cinema]);
 
-  if (requestStatus === REQUEST_STATUS.LOADING || !cinemaData)
-    return <main className="page cinema-page"><LoadingState /></main>;
-
-  return (
-    <main className="page">
-      {/* Rạp gần bạn */}
-      <NearbyTheaters
-        theaters={nearbyTheaters}
-        onSelect={() => onNavigate(PAGE.SHOWTIMES)}
-      />
-
-      <div className="cinema-page" style={{ marginTop: "48px" }}>
-        <div className="cinema-intro">
-          <p className="eyebrow">BETA CINEMAS</p>
-          <h1>{cinemaData.name}, TP Hà Nội</h1>
-          <div
-            className="cinema-image"
-            style={{ backgroundImage: `url(${cinemaData.image})` }}
-          >
-            <div className="image-label">
-              Không gian rạp hiện đại
-              <br />
-              <strong>Trải nghiệm điện ảnh khác biệt</strong>
-            </div>
-          </div>
-          {cinemaData.description.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-          <button
-            className="primary-button"
-            onClick={() => onNavigate(PAGE.SHOWTIMES)}
-          >
-            XEM LỊCH CHIẾU
-          </button>
-        </div>
-
-        <div className="hot-side">
-          <h1>PHIM ĐANG HOT</h1>
-          <div className="side-movie-grid">
-            {cinemaData.hotMovies.map((movie) => (
-              <div key={movie.id}>
-                <MoviePoster movie={movie} compact />
-                <h3>{movie.title}</h3>
-              </div>
-            ))}
-          </div>
+  if (status === REQUEST_STATUS.LOADING || !data) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải thông tin rạp...
         </div>
       </div>
-    </main>
+    );
+  }
+
+  return (
+    <div className="cinema-detail-page page-scroll">
+      {/* top bar */}
+      <div className="top-bar">
+        <button className="top-bar-icon-btn" onClick={() => onNavigate(PAGE.CHAINS)}>
+          <Icon name="back" size={20} />
+        </button>
+        <span className="top-bar-title">{data.name}</span>
+      </div>
+
+      {/* hero image */}
+      <img src={data.image} alt={data.name} className="cinema-detail-image" />
+
+      <div className="cinema-detail-body">
+        <div className="cinema-detail-name">{data.name}</div>
+        {Array.isArray(data.description)
+          ? data.description.map((p, i) => (
+              <p key={i} className="cinema-detail-desc">{p}</p>
+            ))
+          : <p className="cinema-detail-desc">{data.description}</p>
+        }
+
+        <button
+          className="booking-continue-btn"
+          style={{ width: "100%", borderRadius: "var(--radius-sm)", padding: "14px" }}
+          onClick={() => onNavigate(PAGE.SHOWTIMES)}
+        >
+          Xem lịch chiếu
+        </button>
+
+        {/* nearby */}
+        {nearbyTheaters?.length > 0 && (
+          <>
+            <div className="cinema-detail-section">📍 Rạp gần đây</div>
+            {nearbyTheaters.map((t, i) => (
+              <div key={i} style={{
+                padding: "12px 0", borderBottom: "1px solid var(--border)",
+                display: "flex", gap: 12, alignItems: "flex-start",
+              }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: "var(--radius-sm)",
+                  background: "var(--bg-elevated)", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: 20, flexShrink: 0,
+                }}>🎬</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{t.name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>{t.address}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>📞 {t.hotline}</div>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--accent)", fontWeight: 700, flexShrink: 0 }}>
+                  {t.distance}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+
+        {/* hot movies */}
+        {data.hotMovies?.length > 0 && (
+          <>
+            <div className="cinema-detail-section">🔥 Phim đang hot</div>
+            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
+              {data.hotMovies.map(m => (
+                <div key={m.id} style={{ flexShrink: 0, width: 90 }}>
+                  <img
+                    src={m.poster}
+                    alt={m.title}
+                    style={{ width: 90, height: 126, objectFit: "cover", borderRadius: "var(--radius-sm)" }}
+                  />
+                  <div style={{ fontSize: 11, color: "var(--text)", fontWeight: 700, marginTop: 4,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {m.title}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

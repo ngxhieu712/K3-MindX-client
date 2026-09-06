@@ -1,83 +1,31 @@
-import { useState } from "react";
 import { PAGE } from "../../constants/app";
-import Logo from "../common/Logo";
+import Icon from "../common/Icon";
 
-const NAV = [
-  [PAGE.HOME, "TRANG CHỦ"],
-  [PAGE.CHAINS, "ĐẶT VÉ"],
-  [PAGE.MOVIES, "PHIM"],
-  [PAGE.SHOWTIMES, "LỊCH CHIẾU"],
-  [PAGE.CINEMAS, "RẠP"],
-  ["prices", "GIÁ VÉ"],
+const TABS = [
+  { page: PAGE.HOME,    icon: "film",    label: "Chọn phim" },
+  { page: PAGE.CHAINS,  icon: "theater", label: "Chọn rạp" },
+  { page: PAGE.COMBO,   icon: "popcorn", label: "Bắp nước" },
+  { page: PAGE.MOVIES,  icon: "grid",    label: "Tất cả phim" },
+  { page: PAGE.PROFILE, icon: "user",    label: "Tôi", badge: "New" },
 ];
 
-function Header({ page, onNavigate, cinema, cinemas, onCinemaChange }) {
-  const [isCinemaMenuOpen, setCinemaMenuOpen] = useState(false);
-
-  const handleCinemaSelect = (cinemaName) => {
-    setCinemaMenuOpen(false);
-    onCinemaChange(cinemaName);
-    onNavigate(PAGE.SHOWTIMES);
-  };
-
+function Header({ page, onNavigate }) {
   return (
-    <>
-      <div className="topbar">
-        <div className="topbar-inner">
-          <span>🎬 Đặt vé tại CGV, Beta, Galaxy, Lotte và nhiều hơn nữa</span>
-          <div>
-            <button onClick={() => onNavigate(PAGE.AUTH)}>Đăng nhập</button>
-            <span className="divider">|</span>
-            <button onClick={() => onNavigate(PAGE.AUTH)}>Đăng ký</button>
-          </div>
-        </div>
-      </div>
-      <header className="site-header">
-        <div className="header-inner">
-          <button className="brand-button" onClick={() => onNavigate(PAGE.HOME)}>
-            <Logo />
-          </button>
-
-          <div className="cinema-picker-wrap">
-            <button
-              className="cinema-picker"
-              onClick={() => setCinemaMenuOpen((o) => !o)}
-            >
-              {cinema} <span>⌄</span>
-            </button>
-            {isCinemaMenuOpen && (
-              <div className="cinema-menu">
-                <div className="menu-col">
-                  <strong>Hà Nội</strong>
-                  {["TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng", "Cần Thơ"].map((city) => (
-                    <button key={city}>{city} <span>›</span></button>
-                  ))}
-                </div>
-                <div className="menu-col light">
-                  {cinemas.map((cinemaName) => (
-                    <button key={cinemaName} onClick={() => handleCinemaSelect(cinemaName)}>
-                      {cinemaName}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <nav className="main-nav">
-            {NAV.map(([pageKey, label]) => (
-              <button
-                key={pageKey}
-                className={page === pageKey ? "active" : ""}
-                onClick={() => onNavigate(pageKey)}
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-        </div>
-      </header>
-    </>
+    <nav className="bottom-nav">
+      {TABS.map((tab) => (
+        <button
+          key={tab.page}
+          className={`nav-tab${page === tab.page ? " active" : ""}`}
+          onClick={() => onNavigate(tab.page)}
+        >
+          <span className="nav-tab-icon">
+            <Icon name={tab.icon} size={22} />
+          </span>
+          <span className="nav-tab-label">{tab.label}</span>
+          {tab.badge && <span className="nav-tab-badge">{tab.badge}</span>}
+        </button>
+      ))}
+    </nav>
   );
 }
 

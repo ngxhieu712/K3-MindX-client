@@ -1,64 +1,254 @@
-import { useMemo, useState } from "react";
-import { DEFAULTS, MOVIE_TAB } from "../constants/app";
-import Banner from "../components/common/Banner";
-import MovieCard from "../components/movies/MovieCard";
-import MovieTabs from "../components/movies/MovieTabs";
-import { banners, reviews } from "../data/mockData";
+import { useEffect, useState } from "react";
+import { DEFAULTS, MOVIE_TAB, PAGE } from "../constants/app";
+import { banners, movies, reviews, vouchers } from "../data/mockData";
+import Icon from "../components/common/Icon";
 
-function HomePage({ movies, onBuy, onGoToChains }) {
-  const [activeTab, setActiveTab] = useState(MOVIE_TAB.NOW);
+/* ─── helpers ─── */
+function AgeBadge({ age }) {
+  return <span className={`age-badge ${age === "P" ? "P" : age === "T16" ? "T16" : ""}`}>{age}</span>;
+}
 
-  const visibleMovies = useMemo(() => {
-    if (activeTab === MOVIE_TAB.SOON)
-      return movies.slice(DEFAULTS.UPCOMING_MOVIE_START_INDEX);
-    if (activeTab === MOVIE_TAB.SPECIAL)
-      return movies.slice(DEFAULTS.SPECIAL_MOVIE_START_INDEX, DEFAULTS.SPECIAL_MOVIE_END_INDEX);
-    return movies;
-  }, [activeTab, movies]);
+function StarRating({ value }) {
+  return (
+    <span className="review-stars">
+      {[1,2,3,4,5].map(i => (
+        <span key={i} className={`star${i <= value ? " filled" : ""}`}>★</span>
+      ))}
+    </span>
+  );
+}
+
+/* ─── Featured carousel (top 4 hot movies) ─── */
+function FeaturedCarousel({ hotMovies, onBuy }) {
+  const [active, setActive] = useState(0);
+
+  // Chỉ lấy tối đa 4 phim nổi bật
+  const items = hotMovies.slice(0, 4);
 
   return (
-    <main className="home-page page">
-      <Banner banners={banners} onCtaClick={onGoToChains} />
+    <section className="featured-section">
+      <div className="section-row">
+        <span className="section-title">🔥 Phim nổi bật</span>
+      </div>
 
-      {/* Quick chain access */}
-      <section className="quick-chains">
-        <h2 className="section-heading">Chọn theo hãng rạp</h2>
-        <div className="quick-chain-list">
-          {[
-            { id: "cgv", name: "CGV", logo: "🎬", color: "#e60012" },
-            { id: "beta", name: "Beta", logo: "🎥", color: "#005b9f" },
-            { id: "galaxy", name: "Galaxy", logo: "⭐", color: "#6c3fa0" },
-            { id: "lotte", name: "Lotte", logo: "🍀", color: "#e8001c" },
-            { id: "cinestar", name: "Cinestar", logo: "💫", color: "#ff6b00" },
-          ].map((c) => (
-            <button
-              key={c.id}
-              className="quick-chain-btn"
-              style={{ "--chain-color": c.color }}
-              onClick={onGoToChains}
-            >
-              <span className="quick-chain-logo">{c.logo}</span>
-              <span className="quick-chain-name">{c.name}</span>
-            </button>
-          ))}
+      {/* Hiển thị featured item chính ở giữa + 2 bên */}
+      <div className="featured-main" onClick={() => onBuy(items[active])}>
+        <img src={items[active]?.poster} alt={items[active]?.title} className="featured-main-img" />
+        <span className={`age-badge ${items[active]?.age === "P" ? "P" : items[active]?.age === "T16" ? "T16" : ""}`}>
+          {items[active]?.age}
+        </span>
+        <div className="featured-main-overlay">
+          <div className="featured-rating">
+            ★ {reviews[items[active]?.id]
+              ? (reviews[items[active].id].reduce((s,r)=>s+r.rating,0)/reviews[items[active].id].length).toFixed(1)
+              : "8.5"}/10
+          </div>
+          <div className="featured-main-title">{items[active]?.title}</div>
+          <div className="featured-genre">{items[active]?.genre}</div>
         </div>
-      </section>
+        <div className="featured-main-rank">{active + 1}</div>
+      </div>
 
-      {/* Movie listing */}
-      <section className="movie-section">
-        <MovieTabs activeTab={activeTab} onChange={setActiveTab} />
-        <div className="movie-grid">
-          {visibleMovies.map((movie) => (
-            <MovieCard
-              key={movie.id}
-              movie={movie}
-              onBuy={onBuy}
-              movieReviews={reviews[movie.id] || []}
-            />
-          ))}
+      {/* Dot navigation */}
+      <div className="carousel-dots" style={{ marginTop: 10 }}>
+        {items.map((_, i) => (
+          <button
+            key={i}
+            className={`carousel-dot${i === active ? " active" : ""}`}
+            onClick={() => setActive(i)}
+          />
+        ))}
+      </div>
+
+      {/* Thumbnail strip */}
+      <div className="featured-thumbs">
+        {items.map((movie, i) => (
+          <button
+            key={movie.id}
+            className={`featured-thumb${i === active ? " active" : ""}`}
+            onClick={() => setActive(i)}
+          >
+            <img src={movie.poster} alt={movie.title} />
+            <span className="featured-thumb-num">{i + 1}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ─── Horizontal movie row ─── */
+function MovieRow({ title, movies: list, onBuy, onSeeAll }) {
+  // Chỉ hiển thị tối đa 6 phim trong row
+  const items = list.slice(0, 6);
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div className="section-row">
+        <span className="section-title">{title}</span>
+        <button className="section-more" onClick={onSeeAll}>
+          Xem tất cả <Icon name="chevronRight" size={14} />
+        </button>
+      </div>
+      <div className="movies-row">
+        {items.map((movie) => {
+          const avg = reviews[movie.id]
+            ? (reviews[movie.id].reduce((s, r) => s + r.rating, 0) / reviews[movie.id].length).toFixed(1)
+            : null;
+          return (
+            <div key={movie.id} className="movie-row-card" onClick={() => onBuy(movie)}>
+              <div className="movie-row-poster">
+                <img src={movie.poster} alt={movie.title} loading="lazy" />
+                <AgeBadge age={movie.age} />
+                {movie.hot && <span className="hot-badge">HOT</span>}
+              </div>
+              <div className="movie-row-title">{movie.title}</div>
+              <div className="movie-row-sub">{movie.genre.split(",")[0]}</div>
+              {avg && (
+                <div className="movie-row-rating">★ {avg}/10</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ─── Promo banner (auto-slide) ─── */
+function PromoBanner() {
+  const [cur, setCur] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setCur(p => (p + 1) % banners.length), 4000);
+    return () => clearInterval(t);
+  }, []);
+  const slide = banners[cur];
+  return (
+    <div className="home-banner" style={{ marginBottom: 8 }}>
+      <div
+        className="home-banner-slide"
+        style={{ backgroundImage: `url(${slide.image})` }}
+      >
+        <div className="home-banner-overlay" />
+        <div className="home-banner-content">
+          <span className="home-banner-badge">{slide.badge}</span>
+          <div className="home-banner-title">{slide.title}</div>
         </div>
-      </section>
-    </main>
+      </div>
+      <div className="home-banner-dots">
+        {banners.map((_, i) => (
+          <div key={i} className={`home-banner-dot${i === cur ? " active" : ""}`} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Promo / voucher strip ─── */
+function PromoStrip() {
+  return (
+    <div className="promo-strip">
+      <div className="promo-strip-text">
+        <b>Mở vũ trụ ưu đãi 🎉</b>
+        Sở hữu item phim độc quyền tại K3-MindX
+      </div>
+      <span className="promo-strip-btn">Vào ngay</span>
+    </div>
+  );
+}
+
+/* ─── Promotion cards ─── */
+function PromoCards() {
+  const items = [
+    { amount: "50K", unit: "/vé 2D", title: "Beta: Thứ 2 Vui Vẻ", sub: "Thứ 2 hàng tuần" },
+    { amount: "65K", unit: "/vé 2D", title: "CGV: Happy Friday", sub: "Thứ 6 hàng tuần" },
+    { amount: "30%", unit: "giảm", title: "Galaxy: Thứ 4 Giảm Sốc", sub: "Tất cả suất chiếu" },
+  ];
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div className="section-row">
+        <span className="section-title">💰 Ưu đãi dành cho bạn</span>
+        <button className="section-more">Xem tất cả ›</button>
+      </div>
+      <div className="promos-row">
+        {items.map((p, i) => (
+          <div key={i} className="promo-card">
+            <div className="promo-badge">
+              <span className="promo-badge-amount">{p.amount}</span>
+              <span className="promo-badge-unit">{p.unit}</span>
+            </div>
+            <div className="promo-card-text">
+              <div className="promo-card-title">{p.title}</div>
+              <div className="promo-card-sub">{p.sub}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ─── Main ─── */
+function HomePage({ movies: allMovies, onBuy, onNavigate }) {
+  const hotMovies = allMovies.filter(m => m.hot);
+  const nowPlaying = allMovies.slice(0, 6);
+  const comingSoon = allMovies.slice(DEFAULTS.UPCOMING_MOVIE_START_INDEX);
+
+  return (
+    <div className="home-page page-scroll">
+      {/* top bar */}
+      <div className="home-top-bar">
+        <div className="home-logo">
+          <span>K3</span>
+          <span style={{ background: "none", WebkitTextFillColor: "var(--text-sub)", fontSize: 14, fontWeight: 500 }}>
+            &nbsp;Cinema
+          </span>
+        </div>
+        <div className="home-top-actions">
+          <button className="top-bar-icon-btn" onClick={() => onNavigate(PAGE.AUTH)}>
+            <Icon name="bell" size={20} />
+          </button>
+          <button className="top-bar-icon-btn" onClick={() => onNavigate(PAGE.AUTH)}>
+            <Icon name="user" size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* search */}
+      <div className="search-bar">
+        <Icon name="search" size={16} />
+        <input placeholder="Tìm tên phim hoặc rạp..." readOnly />
+      </div>
+
+      {/* featured */}
+      <FeaturedCarousel hotMovies={hotMovies} onBuy={onBuy} />
+
+      {/* now playing */}
+      <MovieRow
+        title="🎬 Phim hay đang chiếu"
+        movies={nowPlaying}
+        onBuy={onBuy}
+        onSeeAll={() => onNavigate(PAGE.MOVIES)}
+      />
+
+      {/* promo banner */}
+      <PromoBanner />
+
+      {/* promo strip */}
+      <PromoStrip />
+
+      {/* promo cards */}
+      <PromoCards />
+
+      {/* coming soon */}
+      <MovieRow
+        title="🗓 Phim sắp chiếu"
+        movies={comingSoon}
+        onBuy={onBuy}
+        onSeeAll={() => onNavigate(PAGE.MOVIES)}
+      />
+
+      <div style={{ height: 16 }} />
+    </div>
   );
 }
 

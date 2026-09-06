@@ -1,164 +1,150 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  DEFAULTS,
-  REQUEST_STATUS,
-  UI_TEXT,
-  formatMoney,
-} from "../constants/app";
+import { DEFAULTS, REQUEST_STATUS, formatMoney } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import LoadingState from "../components/common/LoadingState";
-import MoviePoster from "../components/movies/MoviePoster";
-import Seat from "../components/booking/Seat";
+import Icon from "../components/common/Icon";
 
-const getSeatState = (label, rowIndex, columnIndex, selectedSeats) => {
-  if (selectedSeats.includes(label)) return "chosen";
-  if (
-    rowIndex === DEFAULTS.SOLD_SEAT_ROW_INDEX &&
-    columnIndex === DEFAULTS.SOLD_SEAT_COLUMN_INDEX
-  )
+const getSeatState = (label, rowIndex, colIndex, selected) => {
+  if (selected.includes(label)) return "chosen";
+  if (rowIndex === DEFAULTS.SOLD_SEAT_ROW_INDEX && colIndex === DEFAULTS.SOLD_SEAT_COLUMN_INDEX)
     return "sold";
-  if (
-    rowIndex >= DEFAULTS.RESERVED_SEAT_START_ROW_INDEX &&
-    rowIndex <= DEFAULTS.RESERVED_SEAT_END_ROW_INDEX
-  )
+  if (rowIndex >= DEFAULTS.RESERVED_SEAT_START_ROW_INDEX && rowIndex <= DEFAULTS.RESERVED_SEAT_END_ROW_INDEX)
     return "reserved";
   return "empty";
 };
 
-function BookingPage({ movie, selectedTime, onNext }) {
-  const [seatData, setSeatData] = useState(null);
-  const [selectedSeats, setSelectedSeats] = useState([]);
-  const [requestStatus, setRequestStatus] = useState(REQUEST_STATUS.IDLE);
+function BookingPage({ movie, selectedTime, onNext, onBack }) {
+  const [data, setData] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
 
   useEffect(() => {
-    let isCurrentRequest = true;
-    const loadSeatLayout = async () => {
-      setRequestStatus(REQUEST_STATUS.LOADING);
-      const response = await cinemaService.getSeatLayout({
-        movieId: movie.id,
-        showtime: selectedTime,
-      });
-      if (isCurrentRequest) {
-        setSeatData(response);
-        setSelectedSeats(response.defaultSelectedSeats);
-        setRequestStatus(REQUEST_STATUS.SUCCESS);
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getSeatLayout({ movieId: movie.id, showtime: selectedTime }).then(res => {
+      if (alive) {
+        setData(res);
+        setSelected(res.defaultSelectedSeats);
+        setStatus(REQUEST_STATUS.SUCCESS);
       }
-    };
-    loadSeatLayout();
-    return () => {
-      isCurrentRequest = false;
-    };
+    });
+    return () => { alive = false; };
   }, [movie.id, selectedTime]);
 
-  const totalPriceThousand = useMemo(
-    () => selectedSeats.length * DEFAULTS.VIP_SEAT_PRICE_THOUSAND,
-    [selectedSeats],
-  );
-  const toggleSeat = (seatLabel) =>
-    setSelectedSeats((currentSeats) => {
-      if (currentSeats.includes(seatLabel))
-        return currentSeats.filter((seat) => seat !== seatLabel);
-      if (currentSeats.length >= DEFAULTS.MAX_SELECTED_SEATS)
-        return currentSeats;
-      // TODO: Call POST /api/showtimes/:id/seats/:seatLabel/hold before updating the local selection.
-      return [...currentSeats, seatLabel];
-    });
+  const total = useMemo(() => selected.length * DEFAULTS.VIP_SEAT_PRICE_THOUSAND, [selected]);
 
-  if (requestStatus === REQUEST_STATUS.LOADING || !seatData)
+  const toggleSeat = (label) => {
+    setSelected(cur => {
+      if (cur.includes(label)) return cur.filter(s => s !== label);
+      if (cur.length >= DEFAULTS.MAX_SELECTED_SEATS) return cur;
+      return [...cur, label];
+    });
+  };
+
+  if (status === REQUEST_STATUS.LOADING || !data) {
     return (
-      <main className="booking-page page">
-        <LoadingState label="Đang tải sơ đồ ghế..." />
-      </main>
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải sơ đồ ghế...
+        </div>
+      </div>
     );
+  }
 
   return (
-    <main className="booking-page page">
-      <div className="breadcrumbs">
-        Trang chủ <span>›</span> Đặt vé <span>›</span> {movie.title}
+    <div className="booking-page page-scroll">
+      {/* top bar */}
+      <div className="top-bar">
+        <button className="top-bar-icon-btn" onClick={onBack}><Icon name="back" size={20} /></button>
+        <span className="top-bar-title">Chọn ghế</span>
       </div>
-      <div className="age-warning">{UI_TEXT.UNDER_AGE_WARNING}</div>
-      <div className="booking-layout">
-        <section className="seat-section">
-          <div className="legend">
-            <span>
-              <i className="seat-demo empty" /> Ghế trống
-            </span>
-            <span>
-              <i className="seat-demo chosen" /> Ghế đang chọn
-            </span>
-            <span>
-              <i className="seat-demo held" /> Ghế đang giữ
-            </span>
-            <span>
-              <i className="seat-demo sold" /> Ghế đã bán
-            </span>
-            <span>
-              <i className="seat-demo reserved" /> Ghế đặt trước
-            </span>
-          </div>
-          <div className="screen">MÀN HÌNH CHIẾU</div>
-          <div className="seat-map">
-            {seatData.seats.map((row, rowIndex) => (
-              <div className="seat-row" key={rowIndex}>
-                {row.map((seatLabel, columnIndex) => (
-                  <Seat
-                    key={seatLabel}
-                    label={seatLabel}
-                    state={getSeatState(
-                      seatLabel,
-                      rowIndex,
-                      columnIndex,
-                      selectedSeats,
-                    )}
-                    onClick={() => toggleSeat(seatLabel)}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
-          <div className="seat-summary">
-            <div>
-              <b>Ghế thường</b>
-              <b>Ghế VIP</b>
-              <b>Ghế đôi</b>
-            </div>
-            <div>
-              <span>Tổng tiền</span>
-              <strong>{formatMoney(totalPriceThousand)}</strong>
-            </div>
-            <div>
-              <span>Thời gian còn lại</span>
-              <strong>{seatData.holdDuration}</strong>
-            </div>
-          </div>
-        </section>
-        <aside className="booking-side">
-          <MoviePoster movie={movie} compact />
-          <h2>{movie.title}</h2>
-          <h3>{seatData.format}</h3>
-          <dl>
-            <dt>⌁ Thể loại</dt>
-            <dd>{movie.genre.split(",")[0]}</dd>
-            <dt>◷ Thời lượng</dt>
-            <dd>{movie.length} phút</dd>
-            <dt>♜ Rạp chiếu</dt>
-            <dd>{seatData.cinemaName}</dd>
-            <dt>▣ Ngày chiếu</dt>
-            <dd>{seatData.date}</dd>
-            <dt>◷ Giờ chiếu</dt>
-            <dd>{selectedTime}</dd>
-            <dt>♙ Ghế ngồi</dt>
-            <dd>{selectedSeats.join(", ")}</dd>
-          </dl>
-          <button
-            className="primary-button"
-            onClick={() => onNext(selectedSeats)}
-          >
-            TIẾP TỤC
-          </button>
-        </aside>
+
+      {/* age warning */}
+      <div className="age-warning-bar">
+        ⚠️ Phim dành cho khán giả từ {movie.age === "T16" ? "16" : movie.age === "T13" ? "13" : "0"} tuổi trở lên
       </div>
-    </main>
+
+      {/* movie info bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "12px 16px", background: "var(--bg-card)",
+        borderBottom: "1px solid var(--border)",
+      }}>
+        <img
+          src={movie.poster}
+          alt={movie.title}
+          style={{ width: 44, height: 62, objectFit: "cover", borderRadius: 6 }}
+        />
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{movie.title}</div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>
+            {data.format} · {data.date} · {selectedTime}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{data.cinemaName}</div>
+        </div>
+      </div>
+
+      {/* screen */}
+      <div style={{ padding: "20px 32px 4px" }}>
+        <div className="screen-bar" />
+        <div className="screen-label">MÀN HÌNH</div>
+      </div>
+
+      {/* seat map */}
+      <div className="seat-map-wrap">
+        {data.seats.map((row, ri) => (
+          <div className="seat-row" key={ri}>
+            {row.map((label, ci) => {
+              const state = getSeatState(label, ri, ci, selected);
+              return (
+                <button
+                  key={label}
+                  className={`seat ${state}`}
+                  onClick={() => state !== "sold" && state !== "reserved" && toggleSeat(label)}
+                  title={label}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* legend */}
+      <div className="seat-legend">
+        {[
+          ["empty",    "Trống"],
+          ["chosen",   "Đang chọn"],
+          ["sold",     "Đã bán"],
+          ["reserved", "Giữ trước"],
+        ].map(([cls, lbl]) => (
+          <div key={cls} className="legend-item">
+            <div className={`legend-dot ${cls}`} />
+            {lbl}
+          </div>
+        ))}
+      </div>
+
+      {/* bottom summary bar */}
+      <div className="booking-summary-bar">
+        <div className="booking-summary-info">
+          <div className="booking-summary-seats">
+            {selected.length > 0
+              ? `Ghế: ${selected.join(", ")}`
+              : "Chưa chọn ghế nào"}
+          </div>
+          <div className="booking-summary-price">
+            Tổng: <span>{formatMoney(total)}</span>
+          </div>
+        </div>
+        <button
+          className="booking-continue-btn"
+          disabled={selected.length === 0}
+          onClick={() => onNext(selected)}
+        >
+          Tiếp tục
+        </button>
+      </div>
+    </div>
   );
 }
 

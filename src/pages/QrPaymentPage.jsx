@@ -1,65 +1,101 @@
 import { useEffect, useState } from "react";
 import { REQUEST_STATUS, formatMoney } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import LoadingState from "../components/common/LoadingState";
+import Icon from "../components/common/Icon";
+
+function useCountdown(seconds) {
+  const [left, setLeft] = useState(seconds);
+  useEffect(() => {
+    if (left <= 0) return;
+    const t = setInterval(() => setLeft(p => p - 1), 1000);
+    return () => clearInterval(t);
+  }, [left]);
+  const m = String(Math.floor(left / 60)).padStart(2, "0");
+  const s = String(left % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
 
 function QrPaymentPage({ amountThousand, onCancel }) {
-  const [payment, setPayment] = useState(null);
-  const [requestStatus, setRequestStatus] = useState(REQUEST_STATUS.IDLE);
+  const [data, setData] = useState(null);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
+  const countdown = useCountdown(9 * 60 + 56);
 
   useEffect(() => {
-    let isCurrentRequest = true;
-    const createPayment = async () => {
-      setRequestStatus(REQUEST_STATUS.LOADING);
-      const response = await cinemaService.createQrPayment({ amountThousand });
-      if (isCurrentRequest) {
-        setPayment(response);
-        setRequestStatus(REQUEST_STATUS.SUCCESS);
-      }
-    };
-    createPayment();
-    return () => {
-      isCurrentRequest = false;
-    };
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.createQrPayment({ amountThousand }).then(res => {
+      if (alive) { setData(res); setStatus(REQUEST_STATUS.SUCCESS); }
+    });
+    return () => { alive = false; };
   }, [amountThousand]);
 
-  if (requestStatus === REQUEST_STATUS.LOADING || !payment)
+  if (status === REQUEST_STATUS.LOADING || !data) {
     return (
-      <main className="qr-page page">
-        <LoadingState label="Đang khởi tạo mã thanh toán..." />
-      </main>
-    );
-
-  return (
-    <main className="qr-page page">
-      <p className="eyebrow">THANH TOÁN QR</p>
-      <h1>Thanh toán nhanh chóng, an toàn</h1>
-      <div className="qr-card">
-        <div className="vietqr">
-          <b>
-            <span>V</span>IETQR
-          </b>
-          <div className="qr-pattern">▦</div>
-          <strong>
-            napas<span>247</span> &nbsp; | &nbsp; BIDV
-          </strong>
-          <p>
-            Số tiền: <b>{formatMoney(payment.amountThousand).toUpperCase()}</b>
-            <br />
-            Nội dung CK: {payment.transferContent}
-            <br />
-            Số TK: <b>{payment.accountNumber}</b>
-            <br />
-            {payment.bankName}
-          </p>
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tạo mã QR...
         </div>
       </div>
-      <h3>Thời gian còn lại</h3>
-      <strong className="countdown">{payment.expiresIn}</strong>
-      <button className="secondary-button cancel-payment" onClick={onCancel}>
-        HỦY GIAO DỊCH
-      </button>
-    </main>
+    );
+  }
+
+  return (
+    <div className="qr-page page-scroll">
+      {/* top bar */}
+      <div className="top-bar">
+        <button className="top-bar-icon-btn" onClick={onCancel}><Icon name="close" size={20} /></button>
+        <span className="top-bar-title">Quét mã thanh toán</span>
+      </div>
+
+      <div className="qr-card" style={{ marginTop: 16 }}>
+        <div className="qr-bank-name">🏦 {data.bankName}</div>
+        <div className="qr-amount">{formatMoney(data.amountThousand)}</div>
+
+        {/* QR placeholder – replace with real QR image from API */}
+        <div className="qr-img-wrap">
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 8 }}>📱</div>
+            <div style={{ fontSize: 11, color: "#555", lineHeight: 1.4 }}>
+              Quét mã QR bằng<br />ứng dụng ngân hàng
+            </div>
+          </div>
+        </div>
+
+        <div className="qr-countdown">
+          <Icon name="clock" size={14} color="var(--gold)" /> Hết hạn sau {countdown}
+        </div>
+      </div>
+
+      {/* transfer details */}
+      <div className="payment-card">
+        <div className="payment-section-title">Thông tin chuyển khoản</div>
+        <div className="qr-info-list">
+          <div className="qr-info-row">
+            <span className="qr-info-label">Số tài khoản</span>
+            <span className="qr-info-value">{data.accountNumber}</span>
+          </div>
+          <div className="qr-info-row">
+            <span className="qr-info-label">Số tiền</span>
+            <span className="qr-info-value" style={{ color: "var(--accent)" }}>{formatMoney(data.amountThousand)}</span>
+          </div>
+          <div className="qr-info-row">
+            <span className="qr-info-label">Nội dung CK</span>
+            <span className="qr-info-value">{data.transferContent}</span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "0 16px 16px", fontSize: 12, color: "var(--text-muted)", textAlign: "center", lineHeight: 1.6 }}>
+        Vé sẽ được gửi qua email sau khi xác nhận thanh toán thành công.
+      </div>
+
+      <div style={{ padding: "0 16px" }}>
+        <button className="qr-cancel-btn" onClick={onCancel}>
+          Hủy giao dịch
+        </button>
+      </div>
+    </div>
   );
 }
 

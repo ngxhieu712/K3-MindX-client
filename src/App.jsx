@@ -1,70 +1,81 @@
 import { useEffect, useState } from "react";
-import "./App.css";
+import "./index.css";
 import { DEFAULTS, PAGE, REQUEST_STATUS } from "./constants/app";
 import { cinemaService } from "./services/cinemaService";
 import Header from "./components/layout/Header";
-import Footer from "./components/layout/Footer";
 import LoadingState from "./components/common/LoadingState";
 import BookingModal from "./components/booking/BookingModal";
-import HomePage from "./pages/HomePage";
-import ChainsPage from "./pages/ChainsPage";
-import ChainDetailPage from "./pages/ChainDetailPage";
-import MoviesPage from "./pages/MoviesPage";
-import ShowtimesPage from "./pages/ShowtimesPage";
-import CinemasPage from "./pages/CinemasPage";
-import AuthPage from "./pages/AuthPage";
-import BookingPage from "./pages/BookingPage";
-import PaymentPage from "./pages/PaymentPage";
-import QrPaymentPage from "./pages/QrPaymentPage";
 
-const PAGES_WITHOUT_FOOTER = Object.freeze([PAGE.BOOKING, PAGE.PAYMENT, PAGE.QR_PAYMENT]);
+import HomePage      from "./pages/HomePage";
+import MoviesPage    from "./pages/MoviesPage";
+import ChainsPage    from "./pages/ChainsPage";
+import ChainDetailPage from "./pages/ChainDetailPage";
+import CinemasPage   from "./pages/CinemasPage";
+import ShowtimesPage from "./pages/ShowtimesPage";
+import AuthPage      from "./pages/AuthPage";
+import BookingPage   from "./pages/BookingPage";
+import PaymentPage   from "./pages/PaymentPage";
+import QrPaymentPage from "./pages/QrPaymentPage";
+import ComboPage     from "./pages/ComboPage";
+import ProfilePage   from "./pages/ProfilePage";
+
+/* Pages that hide the bottom nav */
+const PAGES_WITHOUT_NAV = [PAGE.BOOKING, PAGE.PAYMENT, PAGE.QR_PAYMENT, PAGE.AUTH];
 
 function App() {
-  const [catalog, setCatalog] = useState(null);
+  const [catalog, setCatalog]           = useState(null);
   const [catalogStatus, setCatalogStatus] = useState(REQUEST_STATUS.IDLE);
-  const [page, setPage] = useState(PAGE.HOME);
-  const [cinema, setCinema] = useState(DEFAULTS.CINEMA_NAME);
-  const [activeMovie, setActiveMovie] = useState(null);
+
+  /* navigation state */
+  const [page, setPage]                 = useState(DEFAULTS.PAGE);
+
+  /* cinema / chain selection */
+  const [cinema, setCinema]             = useState(DEFAULTS.CINEMA_NAME);
+  const [selectedChain, setSelectedChain] = useState(null);
+
+  /* booking flow state */
+  const [activeMovie, setActiveMovie]   = useState(null);
   const [selectedTime, setSelectedTime] = useState(DEFAULTS.SHOWTIME);
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [paymentAmount, setPaymentAmount] = useState(0);
-  const [isBookingModalOpen, setBookingModalOpen] = useState(false);
-  const [selectedChain, setSelectedChain] = useState(null);
+  const [isModalOpen, setModalOpen]     = useState(false);
 
+  /* load catalog once */
   useEffect(() => {
-    let isCurrentRequest = true;
-    const loadCatalog = async () => {
-      setCatalogStatus(REQUEST_STATUS.LOADING);
-      const response = await cinemaService.getInitialCatalog();
-      if (isCurrentRequest) {
-        setCatalog(response);
-        setActiveMovie(response.movies[DEFAULTS.MOVIE_INDEX]);
-        setCinema(
-          response.cinemas.find((c) => c === DEFAULTS.CINEMA_NAME) ??
-            response.cinemas[DEFAULTS.MOVIE_INDEX],
-        );
+    let alive = true;
+    setCatalogStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getInitialCatalog().then(res => {
+      if (alive) {
+        setCatalog(res);
+        setActiveMovie(res.movies[DEFAULTS.MOVIE_INDEX]);
         setCatalogStatus(REQUEST_STATUS.SUCCESS);
       }
-    };
-    loadCatalog();
-    return () => { isCurrentRequest = false; };
+    });
+    return () => { alive = false; };
   }, []);
 
+  /* ─── booking flow helpers ─── */
   const startBooking = (movie, showtime = DEFAULTS.SHOWTIME) => {
     setActiveMovie(movie);
     setSelectedTime(showtime);
-    setBookingModalOpen(true);
+    setModalOpen(true);
   };
 
-  const confirmShowtime = (showtime) => {
-    setSelectedTime(showtime);
-    setBookingModalOpen(false);
+  const confirmShowtime = (time) => {
+    setSelectedTime(time);
+    setModalOpen(false);
     setPage(PAGE.BOOKING);
   };
 
-  const handleSelectChain = (chain) => {
+  const handleSelectChain = (chain, cinema) => {
     setSelectedChain(chain);
-    setPage(PAGE.CINEMA_DETAIL);
+    if (cinema) {
+      // direct from ChainsPage: chain + cinema already chosen
+      setCinema(cinema.name);
+      setPage(PAGE.CINEMA_DETAIL);
+    } else {
+      setPage(PAGE.CINEMA_DETAIL);
+    }
   };
 
   const handleSelectCinema = (cinemaObj) => {
@@ -72,13 +83,16 @@ function App() {
     setPage(PAGE.SHOWTIMES);
   };
 
-  if (catalogStatus === REQUEST_STATUS.LOADING || !catalog || !activeMovie)
+  /* ─── loading screen ─── */
+  if (catalogStatus === REQUEST_STATUS.LOADING || !catalog || !activeMovie) {
     return (
       <div className="app-shell">
-        <LoadingState label="Đang tải hệ thống đặt vé..." />
+        <LoadingState label="Đang tải K3-MindX Cinema..." />
       </div>
     );
+  }
 
+  /* ─── page renderer ─── */
   const renderPage = () => {
     switch (page) {
       case PAGE.HOME:
@@ -86,35 +100,66 @@ function App() {
           <HomePage
             movies={catalog.movies}
             onBuy={startBooking}
-            onGoToChains={() => setPage(PAGE.CHAINS)}
+            onNavigate={setPage}
           />
         );
-      case PAGE.CHAINS:
-        return <ChainsPage onSelectChain={handleSelectChain} />;
-      case PAGE.CINEMA_DETAIL:
+
+      case PAGE.MOVIES:
         return (
+          <MoviesPage
+            movies={catalog.movies}
+            onBuy={startBooking}
+            onNavigate={setPage}
+          />
+        );
+
+      case PAGE.CHAINS:
+        return (
+          <ChainsPage
+            onSelectChain={handleSelectChain}
+          />
+        );
+
+      case PAGE.CINEMA_DETAIL:
+        return selectedChain ? (
           <ChainDetailPage
             chain={selectedChain}
             onSelectCinema={handleSelectCinema}
             onBack={() => setPage(PAGE.CHAINS)}
           />
-        );
-      case PAGE.MOVIES:
-        return <MoviesPage movies={catalog.movies} onBuy={startBooking} />;
-      case PAGE.SHOWTIMES:
-        return <ShowtimesPage cinema={cinema} dates={catalog.dates} onBuy={startBooking} />;
+        ) : null;
+
       case PAGE.CINEMAS:
-        return <CinemasPage cinema={cinema} onNavigate={setPage} />;
+        return (
+          <CinemasPage
+            cinema={cinema}
+            onNavigate={setPage}
+          />
+        );
+
+      case PAGE.SHOWTIMES:
+        return (
+          <ShowtimesPage
+            cinema={cinema}
+            dates={catalog.dates}
+            onBuy={startBooking}
+            onBack={() => setPage(PAGE.CHAINS)}
+          />
+        );
+
       case PAGE.AUTH:
-        return <AuthPage />;
+        return <AuthPage onBack={() => setPage(PAGE.HOME)} />;
+
       case PAGE.BOOKING:
         return (
           <BookingPage
             movie={activeMovie}
             selectedTime={selectedTime}
             onNext={(seats) => { setSelectedSeats(seats); setPage(PAGE.PAYMENT); }}
+            onBack={() => setPage(PAGE.SHOWTIMES)}
           />
         );
+
       case PAGE.PAYMENT:
         return (
           <PaymentPage
@@ -125,36 +170,46 @@ function App() {
             onPay={(amount) => { setPaymentAmount(amount); setPage(PAGE.QR_PAYMENT); }}
           />
         );
+
       case PAGE.QR_PAYMENT:
-        return <QrPaymentPage amountThousand={paymentAmount} onCancel={() => setPage(PAGE.HOME)} />;
+        return (
+          <QrPaymentPage
+            amountThousand={paymentAmount}
+            onCancel={() => setPage(PAGE.HOME)}
+          />
+        );
+
+      case PAGE.COMBO:
+        return <ComboPage />;
+
+      case PAGE.PROFILE:
+        return <ProfilePage onNavigate={setPage} />;
+
       default:
         return (
           <HomePage
             movies={catalog.movies}
             onBuy={startBooking}
-            onGoToChains={() => setPage(PAGE.CHAINS)}
+            onNavigate={setPage}
           />
         );
     }
   };
 
+  const showNav = !PAGES_WITHOUT_NAV.includes(page);
+
   return (
     <div className="app-shell">
-      <Header
-        page={page}
-        onNavigate={setPage}
-        cinema={cinema}
-        cinemas={catalog.cinemas}
-        onCinemaChange={setCinema}
-      />
       {renderPage()}
-      {!PAGES_WITHOUT_FOOTER.includes(page) && <Footer />}
-      {isBookingModalOpen && (
+
+      {showNav && (
+        <Header page={page} onNavigate={setPage} />
+      )}
+
+      {isModalOpen && activeMovie && (
         <BookingModal
           movie={activeMovie}
-          dates={catalog.dates}
-          time={selectedTime}
-          onClose={() => setBookingModalOpen(false)}
+          onClose={() => setModalOpen(false)}
           onConfirm={confirmShowtime}
         />
       )}

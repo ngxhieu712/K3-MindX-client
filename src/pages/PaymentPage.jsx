@@ -1,160 +1,161 @@
-import { useEffect, useMemo, useState } from "react";
-import { REQUEST_STATUS, UI_TEXT, formatMoney } from "../constants/app";
+import { useEffect, useState } from "react";
+import { DEFAULTS, REQUEST_STATUS, formatMoney } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import LoadingState from "../components/common/LoadingState";
-import MoviePoster from "../components/movies/MoviePoster";
-import VoucherBox from "../components/common/VoucherBox";
 import { vouchers } from "../data/mockData";
+import VoucherBox from "../components/common/VoucherBox";
+import Icon from "../components/common/Icon";
+
+const COMBOS = [
+  { id: "none",   icon: "🚫", name: "Không",        desc: "",                             price: 0 },
+  { id: "small",  icon: "🍿", name: "Combo nhỏ",    desc: "1 bắp + 1 nước 32oz",          price: 69 },
+  { id: "big",    icon: "🍿🥤",name: "Combo 2 Big",  desc: "1 bắp + 2 nước ngọt size 27oz", price: 109 },
+  { id: "vip",    icon: "👑", name: "Combo Kim Cương", desc: "1 ly KimCương + 1 bắp 69oz", price: 149 },
+];
 
 function PaymentPage({ movie, selectedTime, selectedSeats, onBack, onPay }) {
-  const [summary, setSummary] = useState(null);
-  const [requestStatus, setRequestStatus] = useState(REQUEST_STATUS.IDLE);
-  const [comboQuantity, setComboQuantity] = useState(0);
-  const [appliedVoucher, setAppliedVoucher] = useState(null);
+  const [orderData, setOrderData] = useState(null);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
+  const [selectedCombo, setSelectedCombo] = useState("none");
+  const [discount, setDiscount] = useState(null);
 
   useEffect(() => {
-    let isCurrentRequest = true;
-    const loadCheckoutSummary = async () => {
-      setRequestStatus(REQUEST_STATUS.LOADING);
-      const response = await cinemaService.getCheckoutSummary({
-        movie,
-        showtime: selectedTime,
-        selectedSeats,
-      });
-      if (isCurrentRequest) {
-        setSummary(response);
-        setRequestStatus(REQUEST_STATUS.SUCCESS);
-      }
-    };
-    loadCheckoutSummary();
-    return () => { isCurrentRequest = false; };
-  }, [movie, selectedSeats, selectedTime]);
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getCheckoutSummary({ movie, showtime: selectedTime, selectedSeats }).then(res => {
+      if (alive) { setOrderData(res); setStatus(REQUEST_STATUS.SUCCESS); }
+    });
+    return () => { alive = false; };
+  }, [movie, selectedTime, selectedSeats]);
 
-  const comboPrice = 89;
-
-  const seatTotal = useMemo(
-    () => (summary?.seatPriceThousand ?? 0) * selectedSeats.length,
-    [selectedSeats.length, summary?.seatPriceThousand],
-  );
-
-  const discountAmount = useMemo(() => {
-    if (!appliedVoucher) return 0;
-    if (appliedVoucher.type === "percent")
-      return Math.round((seatTotal * appliedVoucher.discount) / 100);
-    return appliedVoucher.discount;
-  }, [appliedVoucher, seatTotal]);
-
-  const totalPriceThousand = useMemo(
-    () => seatTotal + comboQuantity * comboPrice - discountAmount,
-    [seatTotal, comboQuantity, discountAmount],
-  );
-
-  if (requestStatus === REQUEST_STATUS.LOADING || !summary)
+  if (status === REQUEST_STATUS.LOADING || !orderData) {
     return (
-      <main className="payment-page page">
-        <LoadingState label="Đang tải thông tin thanh toán..." />
-      </main>
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải thông tin...
+        </div>
+      </div>
     );
+  }
+
+  const combo = COMBOS.find(c => c.id === selectedCombo);
+  const seatTotal = selectedSeats.length * DEFAULTS.VIP_SEAT_PRICE_THOUSAND;
+  const comboTotal = combo?.price ?? 0;
+  const subTotal = seatTotal + comboTotal;
+  const discountAmt = discount
+    ? discount.type === "percent"
+      ? Math.round(subTotal * discount.discount / 100)
+      : discount.discount
+    : 0;
+  const grandTotal = Math.max(0, subTotal - discountAmt);
 
   return (
-    <main className="payment-page page">
-      <div className="breadcrumbs">
-        Trang chủ <span>›</span> Đặt vé <span>›</span> Thông tin thanh toán
+    <div className="payment-page page-scroll">
+      {/* top bar */}
+      <div className="top-bar">
+        <button className="top-bar-icon-btn" onClick={onBack}><Icon name="back" size={20} /></button>
+        <span className="top-bar-title">Xác nhận & Thanh toán</span>
       </div>
-      <div className="age-warning">{UI_TEXT.UNDER_AGE_WARNING}</div>
-      <div className="booking-layout">
-        <section className="payment-content">
-          <h2>◯ &nbsp; THÔNG TIN THANH TOÁN</h2>
-          <div className="customer-grid">
-            <p>Họ Tên:<strong>{summary.customer.name}</strong></p>
-            <p>Số điện thoại:<strong>{summary.customer.phone}</strong></p>
-            <p>Email:<strong>{summary.customer.email}</strong></p>
-          </div>
 
-          <div className="selected-order">
-            <b>GHẾ VIP</b>
-            <span>{selectedSeats.length} × {formatMoney(summary.seatPriceThousand)}</span>
-            <strong>= {formatMoney(seatTotal)}</strong>
+      {/* movie summary card */}
+      <div className="payment-card" style={{ marginTop: 16 }}>
+        <div className="payment-section-title">Thông tin phim</div>
+        <div className="payment-movie-row">
+          <div className="payment-poster">
+            <img src={movie.poster} alt={movie.title} />
           </div>
-
-          <h2 className="combo-title">♧ &nbsp; COMBO ƯU ĐÃI</h2>
-          <div className="combo-row">
-            <div className="combo-art">🍿</div>
-            <div>
-              <b>{summary.combo.name}</b>
-              <p>{summary.combo.description}</p>
-              <p className="combo-price-tag">{formatMoney(comboPrice)} / phần</p>
-            </div>
-            <div className="quantity">
-              <span className="quantity-count">{comboQuantity}</span>
-              <button onClick={() => setComboQuantity((q) => q + 1)}>＋</button>
-              <button onClick={() => setComboQuantity((q) => Math.max(0, q - 1))}>−</button>
+          <div>
+            <div className="payment-movie-title">{movie.title}</div>
+            <div className="payment-movie-meta">
+              <span>{orderData.format}</span><br />
+              <span>📅 {orderData.date}</span><br />
+              <span>⏰ {selectedTime}</span><br />
+              <span>🏛 {orderData.cinemaName}</span><br />
+              <span>💺 {selectedSeats.join(", ")}</span>
             </div>
           </div>
+        </div>
+      </div>
 
-          <VoucherBox
-            cinemaName={summary.cinemaName}
-            vouchers={vouchers}
-            onApply={setAppliedVoucher}
-          />
+      {/* customer info */}
+      <div className="payment-card">
+        <div className="payment-section-title">Thông tin khách hàng</div>
+        <div className="payment-row">
+          <span className="payment-row-label">Họ tên</span>
+          <span className="payment-row-value">{orderData.customer.name}</span>
+        </div>
+        <div className="payment-row">
+          <span className="payment-row-label">Số điện thoại</span>
+          <span className="payment-row-value">{orderData.customer.phone}</span>
+        </div>
+        <div className="payment-row">
+          <span className="payment-row-label">Email</span>
+          <span className="payment-row-value" style={{ fontSize: 12 }}>{orderData.customer.email}</span>
+        </div>
+      </div>
 
-          <div className="price-summary">
-            <div className="price-row">
-              <span>Ghế ({selectedSeats.length} ghế)</span>
-              <span>{formatMoney(seatTotal)}</span>
-            </div>
-            {comboQuantity > 0 && (
-              <div className="price-row">
-                <span>Combo × {comboQuantity}</span>
-                <span>{formatMoney(comboQuantity * comboPrice)}</span>
-              </div>
-            )}
-            {discountAmount > 0 && (
-              <div className="price-row discount">
-                <span>Giảm giá ({appliedVoucher.code})</span>
-                <span>-{formatMoney(discountAmount)}</span>
-              </div>
-            )}
-            <div className="price-row total">
-              <span>Tổng cộng</span>
-              <strong>{formatMoney(totalPriceThousand)}</strong>
-            </div>
-          </div>
-        </section>
-
-        <aside className="booking-side">
-          <MoviePoster movie={movie} compact />
-          <h2>{movie.title}</h2>
-          <h3>{summary.format}</h3>
-          <dl>
-            <dt>♜ Rạp chiếu</dt>
-            <dd>{summary.cinemaName}</dd>
-            <dt>▣ Ngày chiếu</dt>
-            <dd>{summary.date}</dd>
-            <dt>◷ Giờ chiếu</dt>
-            <dd>{selectedTime}</dd>
-            <dt>♙ Ghế ngồi</dt>
-            <dd>{selectedSeats.join(", ")}</dd>
-            {discountAmount > 0 && (
-              <>
-                <dt>🎟️ Voucher</dt>
-                <dd className="voucher-applied-label">{appliedVoucher.code}</dd>
-              </>
-            )}
-          </dl>
-          <div className="payment-total-side">
-            <span>Tổng thanh toán</span>
-            <strong>{formatMoney(totalPriceThousand)}</strong>
-          </div>
-          <div className="side-actions">
-            <button className="secondary-button" onClick={onBack}>QUAY LẠI</button>
-            <button className="primary-button" onClick={() => onPay(totalPriceThousand)}>
-              THANH TOÁN
+      {/* combo picker */}
+      <div className="payment-card">
+        <div className="payment-section-title">🍿 Thêm bắp nước</div>
+        <div className="combo-select-row">
+          {COMBOS.map(c => (
+            <button
+              key={c.id}
+              className={`combo-select-card${selectedCombo === c.id ? " active" : ""}`}
+              onClick={() => setSelectedCombo(c.id)}
+            >
+              <div className="combo-select-card-icon">{c.icon}</div>
+              <div className="combo-select-card-name">{c.name}</div>
+              {c.price > 0 && <div className="combo-select-card-price">{c.price}K</div>}
             </button>
-          </div>
-        </aside>
+          ))}
+        </div>
+        {combo && combo.desc && (
+          <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 4 }}>{combo.desc}</div>
+        )}
       </div>
-    </main>
+
+      {/* voucher */}
+      <VoucherBox
+        cinemaName={orderData.cinemaName}
+        vouchers={vouchers}
+        onApply={setDiscount}
+      />
+
+      {/* price breakdown */}
+      <div className="payment-card">
+        <div className="payment-section-title">Chi tiết thanh toán</div>
+        <div className="payment-row">
+          <span className="payment-row-label">Ghế ({selectedSeats.length} x {DEFAULTS.VIP_SEAT_PRICE_THOUSAND}K)</span>
+          <span className="payment-row-value">{formatMoney(seatTotal)}</span>
+        </div>
+        {comboTotal > 0 && (
+          <div className="payment-row">
+            <span className="payment-row-label">{combo.name}</span>
+            <span className="payment-row-value">{formatMoney(comboTotal)}</span>
+          </div>
+        )}
+        {discountAmt > 0 && (
+          <div className="payment-row">
+            <span className="payment-row-label">Giảm giá ({discount.code})</span>
+            <span className="payment-row-value" style={{ color: "var(--green)" }}>-{formatMoney(discountAmt)}</span>
+          </div>
+        )}
+        <div className="payment-total-row">
+          <span>Tổng cộng</span>
+          <span>{formatMoney(grandTotal)}</span>
+        </div>
+      </div>
+
+      {/* pay button */}
+      <button
+        className="booking-continue-btn"
+        style={{ width: "100%", borderRadius: "var(--radius-sm)", padding: "16px", fontSize: 15 }}
+        onClick={() => onPay(grandTotal)}
+      >
+        Thanh toán {formatMoney(grandTotal)}
+      </button>
+    </div>
   );
 }
 

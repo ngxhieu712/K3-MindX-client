@@ -1,86 +1,99 @@
 import { useEffect, useState } from "react";
-import { DEFAULTS, REQUEST_STATUS } from "../constants/app";
+import { REQUEST_STATUS, PAGE } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import DateStrip from "../components/booking/DateStrip";
 import Icon from "../components/common/Icon";
-import LoadingState from "../components/common/LoadingState";
-import MoviePoster from "../components/movies/MoviePoster";
 
-function ShowtimesPage({ cinema, dates, onBuy }) {
-  const [selectedDateIndex, setSelectedDateIndex] = useState(
-    DEFAULTS.SELECTED_DATE_INDEX,
-  );
-  const [showtimeData, setShowtimeData] = useState(null);
-  const [requestStatus, setRequestStatus] = useState(REQUEST_STATUS.IDLE);
+function ShowtimesPage({ cinema, dates, onBuy, onBack }) {
+  const [selectedDate, setSelectedDate] = useState(0);
+  const [data, setData] = useState(null);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
 
   useEffect(() => {
-    let isCurrentRequest = true;
-    const loadShowtimes = async () => {
-      setRequestStatus(REQUEST_STATUS.LOADING);
-      const response = await cinemaService.getShowtimes({
-        cinemaName: cinema,
-        date: dates[selectedDateIndex],
-      });
-      if (isCurrentRequest) {
-        setShowtimeData(response);
-        setRequestStatus(REQUEST_STATUS.SUCCESS);
-      }
-    };
-    loadShowtimes();
-    return () => {
-      isCurrentRequest = false;
-    };
-  }, [cinema, dates, selectedDateIndex]);
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getShowtimes({ cinemaName: cinema, date: dates[selectedDate] }).then(res => {
+      if (alive) { setData(res); setStatus(REQUEST_STATUS.SUCCESS); }
+    });
+    return () => { alive = false; };
+  }, [cinema, selectedDate, dates]);
+
+  const parseDateBtn = (d) => {
+    const parts = d.split(" - ");
+    return { day: parts[0]?.split("/")[0] ?? d, dow: parts[1] ?? "" };
+  };
 
   return (
-    <main className="page showtimes-page">
-      <div className="page-title-row">
-        <div>
-          <p className="eyebrow">LỊCH CHIẾU HÔM NAY</p>
-          <h1>{cinema}</h1>
+    <div className="showtimes-page page-scroll">
+      {/* top bar */}
+      <div className="top-bar">
+        <button className="top-bar-icon-btn" onClick={onBack}><Icon name="back" size={20} /></button>
+        <span className="top-bar-title">{cinema}</span>
+        <button className="top-bar-icon-btn"><Icon name="search" size={18} /></button>
+      </div>
+
+      {/* date strip */}
+      <div className="date-strip">
+        {dates.map((d, i) => {
+          const { day, dow } = parseDateBtn(d);
+          return (
+            <button
+              key={i}
+              className={`date-btn${selectedDate === i ? " active" : ""}`}
+              onClick={() => setSelectedDate(i)}
+            >
+              <span className="date-num">{day}</span>
+              <span>{dow}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* content */}
+      {status === REQUEST_STATUS.LOADING || !data ? (
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải lịch chiếu...
         </div>
-        <button className="outline-button">⌖ Đổi rạp</button>
-      </div>
-      <DateStrip
-        dates={dates}
-        selectedDateIndex={selectedDateIndex}
-        onChange={setSelectedDateIndex}
-      />
-      <div className="late-note">
-        <span /> Suất chiếu muộn từ 22h00
-      </div>
-      {requestStatus === REQUEST_STATUS.LOADING ? (
-        <LoadingState />
+      ) : data.movies.length === 0 ? (
+        <div style={{ padding: "40px 16px", textAlign: "center", color: "var(--text-muted)" }}>
+          Không có suất chiếu hôm nay
+        </div>
       ) : (
-        <div className="showtime-list">
-          {showtimeData?.movies.map((movie) => (
-            <section className="showtime-row" key={movie.id}>
-              <MoviePoster movie={movie} compact />
-              <div className="showtime-info">
-                <h2>{movie.title}</h2>
-                <p className="muted">
-                  <Icon>⌁</Icon> {movie.genre} <span className="dot">•</span>{" "}
-                  <Icon>◷</Icon> {movie.length} phút
-                </p>
-                <h4>2D PHỤ ĐỀ</h4>
-                <div className="time-grid">
-                  {movie.showtimes.map((showtime) => (
-                    <button
-                      key={showtime.time}
-                      className={showtime.isHighlighted ? "selected" : ""}
-                      onClick={() => onBuy(movie, showtime.time)}
-                    >
-                      <strong>{showtime.time}</strong>
-                      <small>{showtime.availableSeats} ghế trống</small>
-                    </button>
-                  ))}
+        data.movies.map(movie => (
+          <div key={movie.id} className="showtime-movie-row">
+            <div className="showtime-movie-info">
+              <div className="showtime-movie-poster">
+                <img src={movie.poster} alt={movie.title} loading="lazy" />
+              </div>
+              <div>
+                <div className="showtime-movie-title">{movie.title}</div>
+                <div className="showtime-movie-meta">
+                  {movie.genre} · {movie.length} phút · {movie.age}
                 </div>
               </div>
-            </section>
-          ))}
-        </div>
+            </div>
+
+            <div style={{ marginBottom: 4, fontSize: 12, color: "var(--text-muted)", paddingLeft: 2 }}>
+              2D Phụ đề
+            </div>
+            <div className="time-chips">
+              {movie.showtimes.map((st, i) => (
+                <button
+                  key={i}
+                  className={`time-chip${st.isHighlighted ? " active" : ""}`}
+                  onClick={() => onBuy(movie, st.time)}
+                >
+                  {st.time}
+                  <small>{st.availableSeats} ghế</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))
       )}
-    </main>
+
+      <div style={{ height: 16 }} />
+    </div>
   );
 }
 
