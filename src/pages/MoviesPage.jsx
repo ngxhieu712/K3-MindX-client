@@ -9,6 +9,7 @@ function AgeBadge({ age }) {
 
 function MoviesPage({ movies, onBuy, onNavigate }) {
   const [activeTab, setActiveTab] = useState(MOVIE_TAB.NOW);
+  const [search, setSearch] = useState("");
 
   const tabs = [
     { key: MOVIE_TAB.NOW,     label: "Đang chiếu" },
@@ -16,13 +17,22 @@ function MoviesPage({ movies, onBuy, onNavigate }) {
     { key: MOVIE_TAB.SPECIAL, label: "Đặc biệt" },
   ];
 
-  const visible = useMemo(() => {
+  const byTab = useMemo(() => {
     if (activeTab === MOVIE_TAB.SOON)
       return movies.slice(DEFAULTS.UPCOMING_MOVIE_START_INDEX);
     if (activeTab === MOVIE_TAB.SPECIAL)
       return movies.slice(DEFAULTS.SPECIAL_MOVIE_START_INDEX, DEFAULTS.SPECIAL_MOVIE_END_INDEX);
     return movies;
   }, [activeTab, movies]);
+
+  const visible = useMemo(() => {
+    if (!search.trim()) return byTab;
+    const q = search.toLowerCase();
+    return byTab.filter(m =>
+      m.title.toLowerCase().includes(q) ||
+      m.genre.toLowerCase().includes(q)
+    );
+  }, [byTab, search]);
 
   return (
     <div className="movies-page page-scroll">
@@ -37,7 +47,16 @@ function MoviesPage({ movies, onBuy, onNavigate }) {
       {/* search */}
       <div className="search-bar">
         <Icon name="search" size={16} />
-        <input placeholder="Tìm tên phim..." readOnly />
+        <input
+          placeholder="Tìm tên phim, thể loại..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <button onClick={() => setSearch("")} style={{ color:"var(--text-muted)" }}>
+            <Icon name="close" size={14} />
+          </button>
+        )}
       </div>
 
       {/* tabs */}
@@ -55,7 +74,11 @@ function MoviesPage({ movies, onBuy, onNavigate }) {
 
       {/* grid */}
       <div className="movies-grid">
-        {visible.map(movie => {
+        {visible.length === 0 ? (
+          <div style={{ gridColumn:"1/-1", padding:"40px 0", textAlign:"center", color:"var(--text-muted)" }}>
+            Không tìm thấy phim nào
+          </div>
+        ) : visible.map(movie => {
           const avg = reviews[movie.id]
             ? (reviews[movie.id].reduce((s, r) => s + r.rating, 0) / reviews[movie.id].length).toFixed(1)
             : null;

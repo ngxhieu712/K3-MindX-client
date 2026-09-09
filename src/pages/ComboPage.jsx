@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { chains } from "../data/mockData";
+import { PAGE } from "../constants/app";
 import Icon from "../components/common/Icon";
 
 const COMBOS = [
@@ -45,12 +46,27 @@ const CATEGORIES = [
 const allCinemaNames = chains.flatMap(c => c.cinemas.map(ci => ci.name));
 const allDates = ["Hôm nay", "Ngày mai", "Thứ 3, 09/09", "Thứ 4, 10/09"];
 
-function ComboPage() {
+function ComboPage({ onNavigate }) {
   const [category, setCategory] = useState("all");
   const [cinema, setCinema] = useState(allCinemaNames[0]);
   const [date, setDate] = useState(allDates[0]);
   const [showCinemaPicker, setShowCinemaPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [cart, setCart] = useState([]);
+  const [toast, setToast] = useState("");
+
+  const addToCart = (combo) => {
+    setCart(c => {
+      const existing = c.find(i => i.id === combo.id);
+      if (existing) return c.map(i => i.id===combo.id ? {...i, qty:i.qty+1} : i);
+      return [...c, { ...combo, qty:1 }];
+    });
+    setToast(`Đã thêm "${combo.name}" vào giỏ!`);
+    setTimeout(() => setToast(""), 2000);
+  };
+
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  const cartCount = cart.reduce((s, i) => s + i.qty, 0);
 
   const visible = COMBOS.filter(c => category === "all" || c.category === category);
 
@@ -59,7 +75,9 @@ function ComboPage() {
       {/* top bar */}
       <div className="top-bar">
         <span className="top-bar-title" style={{ marginRight: 0 }}>Mua bắp nước</span>
-        <button className="top-bar-icon-btn"><Icon name="home" size={18} /></button>
+        <button className="top-bar-icon-btn" onClick={() => onNavigate?.(PAGE.HOME)}>
+          <Icon name="home" size={18} />
+        </button>
       </div>
 
       {/* hero */}
@@ -161,7 +179,7 @@ function ComboPage() {
                 background: "var(--accent)", color: "white",
                 fontSize: 12, fontWeight: 700,
                 borderRadius: "var(--radius-sm)",
-              }}>
+              }} onClick={() => addToCart(combo)}>
                 Thêm vào giỏ
               </button>
             </div>
@@ -170,6 +188,46 @@ function ComboPage() {
       </div>
 
       <div style={{ height: 16 }} />
+
+      {/* Giỏ hàng bar */}
+      {cartCount > 0 && (
+        <div style={{
+          position:"fixed", bottom:"var(--nav-h)", left:0, right:0,
+          background:"var(--bg-surface)", borderTop:"1px solid var(--border)",
+          padding:"12px 16px", display:"flex", alignItems:"center", gap:12, zIndex:50,
+        }}>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, color:"var(--text-sub)" }}>{cartCount} món</div>
+            <div style={{ fontSize:16, fontWeight:800, color:"var(--accent)" }}>
+              {cartTotal.toLocaleString("vi-VN")}đ
+            </div>
+          </div>
+          <button
+            style={{
+              background:"var(--accent)", color:"white",
+              padding:"10px 20px", borderRadius:"var(--radius-sm)",
+              fontWeight:700, fontSize:14,
+            }}
+            onClick={() => {
+              alert(`Đặt ${cartCount} món combo - ${cartTotal.toLocaleString("vi-VN")}đ\n(Chức năng này sẽ tích hợp khi đặt vé)`);
+            }}
+          >
+            Đặt ngay
+          </button>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{
+          position:"fixed", bottom:"calc(var(--nav-h) + 70px)", left:"50%", transform:"translateX(-50%)",
+          background:"var(--green)", color:"white", padding:"8px 18px",
+          borderRadius:"var(--radius-full)", fontSize:13, fontWeight:700,
+          boxShadow:"0 4px 16px rgba(0,0,0,0.3)", zIndex:300, whiteSpace:"nowrap",
+        }}>
+          ✓ {toast}
+        </div>
+      )}
     </div>
   );
 }

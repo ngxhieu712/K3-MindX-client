@@ -1,13 +1,31 @@
 import { useState } from "react";
 import { chains } from "../data/mockData";
+import { PAGE } from "../constants/app";
 import Icon from "../components/common/Icon";
 
 const ALL = "all";
 
-function ChainsPage({ onSelectChain }) {
+function ChainsPage({ onSelectChain, onNavigate }) {
   const [activeChain, setActiveChain] = useState(ALL);
   const [search, setSearch] = useState("");
   const [showLocation, setShowLocation] = useState(true);
+  const [favorites, setFavorites] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("hn_favorites") || "[]"); } catch { return []; }
+  });
+
+  const toggleFav = (cinemaId, e) => {
+    e.stopPropagation();
+    setFavorites(prev => {
+      const next = prev.includes(cinemaId) ? prev.filter(id => id !== cinemaId) : [...prev, cinemaId];
+      localStorage.setItem("hn_favorites", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const openMaps = (address, e) => {
+    e.stopPropagation();
+    window.open(`https://maps.google.com/?q=${encodeURIComponent(address)}`, "_blank");
+  };
 
   const filtered = chains
     .filter(c => activeChain === ALL || c.id === activeChain)
@@ -25,7 +43,9 @@ function ChainsPage({ onSelectChain }) {
       {/* top bar */}
       <div className="top-bar">
         <span className="top-bar-title" style={{ marginRight: 0 }}>Chọn theo rạp</span>
-        <button className="top-bar-icon-btn"><Icon name="home" size={18} /></button>
+        <button className="top-bar-icon-btn" onClick={() => onNavigate?.(PAGE.HOME)}>
+          <Icon name="home" size={18} />
+        </button>
       </div>
 
       {/* search */}
@@ -116,8 +136,25 @@ function ChainsPage({ onSelectChain }) {
                   <div className="cinema-item-address">{cinema.address}</div>
                 </div>
                 <div className="cinema-item-actions">
-                  <span className="cinema-heart"><Icon name="heart" size={18} /></span>
-                  <span className="cinema-directions">Tìm đường</span>
+                  <button
+                    style={{ background:"none", border:"none", padding:4, cursor:"pointer" }}
+                    onClick={e => toggleFav(cinema.id, e)}
+                    title="Yêu thích"
+                  >
+                    <Icon
+                      name="heart"
+                      size={18}
+                      color={favorites.includes(cinema.id) ? "var(--accent)" : "var(--text-muted)"}
+                    />
+                  </button>
+                  <button
+                    className="cinema-directions"
+                    style={{ background:"none", border:"none", padding:4, cursor:"pointer", fontSize:11, fontWeight:700, color:"var(--accent)" }}
+                    onClick={e => openMaps(cinema.address, e)}
+                    title="Mở Google Maps"
+                  >
+                    Tìm đường
+                  </button>
                 </div>
               </button>
             ))}

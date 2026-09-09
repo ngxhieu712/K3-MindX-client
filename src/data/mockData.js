@@ -180,3 +180,90 @@ export const nearbyTheaters = [
   { name: "Beta Mỹ Đình", address: "Tầng hầm B1, Golden Palace, Mỹ Đình, Hà Nội", distance: "2.1 km", screens: 7, hotline: "0866 154 610" },
   { name: "Galaxy Nguyễn Du", address: "116 Nguyễn Du, Hai Bà Trưng, Hà Nội", distance: "2.4 km", screens: 6, hotline: "1900 2224" },
 ];
+
+// ── WALLET ──────────────────────────────────────────────────
+export const WALLET_STORAGE_KEY = "hn_wallet";
+
+export const defaultWallet = {
+  balance: 250000, // đồng
+  transactions: [
+    { id: "W001", type: "topup",   amount: 200000, desc: "Nạp tiền qua VietQR",          date: "2026-09-05 10:30", status: "success" },
+    { id: "W002", type: "topup",   amount: 100000, desc: "Nạp tiền qua VietQR",          date: "2026-09-03 14:20", status: "success" },
+    { id: "W003", type: "payment", amount: -50000, desc: "Thanh toán vé BK001",           date: "2026-09-06 21:30", status: "success" },
+    { id: "W004", type: "refund",  amount:  47500, desc: "Hoàn vé BK002 (-5% phí)",      date: "2026-09-04 09:15", status: "success" },
+    { id: "W005", type: "payment", amount: -50000, desc: "Thanh toán vé BK004",           date: "2026-09-02 18:00", status: "success" },
+  ],
+};
+
+export function loadWallet() {
+  try {
+    const s = localStorage.getItem(WALLET_STORAGE_KEY);
+    return s ? JSON.parse(s) : { ...defaultWallet };
+  } catch { return { ...defaultWallet }; }
+}
+
+export function saveWallet(wallet) {
+  localStorage.setItem(WALLET_STORAGE_KEY, JSON.stringify(wallet));
+}
+
+// ── TICKET HISTORY ───────────────────────────────────────────
+export const TICKETS_STORAGE_KEY = "hn_tickets";
+
+export const defaultTickets = [
+  {
+    id: "TK001", bookingId: "BK001",
+    movie: "Nghỉ Hè Sợ Nghỉ Hưu", poster: "https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?w=300&q=80",
+    cinema: "Beta Thanh Xuân", room: "Phòng 1", format: "2D Phụ đề",
+    date: "07/09/2026", time: "14:00", seats: ["E5","E6"],
+    total: 100000, payMethod: "wallet",
+    status: "active",   // active | used | refunded | refund_pending
+    purchasedAt: "2026-09-06 21:30",
+    qrData: "HN-TK001-E5E6-20260907-1400",
+  },
+  {
+    id: "TK002", bookingId: "BK003",
+    movie: "Hộ Linh Tráng Sĩ - Bí Ẩn Mộ Vua Đinh", poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=300&q=80",
+    cinema: "Galaxy Nguyễn Du", room: "Phòng 2", format: "IMAX",
+    date: "07/09/2026", time: "11:00", seats: ["G7","G8","G9"],
+    total: 150000, payMethod: "bank",
+    status: "active",
+    purchasedAt: "2026-09-06 19:00",
+    qrData: "HN-TK002-G7G8G9-20260907-1100",
+  },
+  {
+    id: "TK003", bookingId: "BK006",
+    movie: "The Odyssey", poster: "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=300&q=80",
+    cinema: "CGV AEON Hà Đông", room: "Phòng 5", format: "2D Phụ đề",
+    date: "06/09/2026", time: "19:00", seats: ["D5","D6"],
+    total: 100000, payMethod: "bank",
+    status: "used",
+    purchasedAt: "2026-09-05 14:00",
+    qrData: "HN-TK003-D5D6-20260906-1900",
+  },
+  {
+    id: "TK004", bookingId: "BK004",
+    movie: "Phim Shin - Cậu Bé Bút Chì", poster: "https://images.unsplash.com/photo-1596727147705-61a532a659bd?w=300&q=80",
+    cinema: "Beta Mỹ Đình", room: "Phòng 4", format: "2D Phụ đề",
+    date: "07/09/2026", time: "09:00", seats: ["A1","A2"],
+    total: 100000, payMethod: "wallet",
+    status: "refunded",
+    purchasedAt: "2026-09-06 18:45",
+    refundedAt: "2026-09-06 19:30",
+    refundAmount: 95000,
+    qrData: "HN-TK004-A1A2-20260907-0900",
+  },
+];
+
+export function loadTickets() {
+  try {
+    const s = localStorage.getItem(TICKETS_STORAGE_KEY);
+    return s ? JSON.parse(s) : [...defaultTickets];
+  } catch { return [...defaultTickets]; }
+}
+
+export function saveTickets(tickets) {
+  localStorage.setItem(TICKETS_STORAGE_KEY, JSON.stringify(tickets));
+}
+
+// Phí hoàn vé
+export const REFUND_FEE_PERCENT = 10; // giảm 10%

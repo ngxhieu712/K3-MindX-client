@@ -1,16 +1,19 @@
 export const PAGE = Object.freeze({
-  HOME:          "home",
-  CHAINS:        "chains",
-  CINEMA_DETAIL: "cinema_detail",
-  MOVIES:        "movies",
-  SHOWTIMES:     "showtimes",
-  CINEMAS:       "cinemas",
-  AUTH:          "auth",
-  BOOKING:       "booking",
-  PAYMENT:       "payment",
-  QR_PAYMENT:    "qr",
-  COMBO:         "combo",
-  PROFILE:       "profile",
+  HOME:            "home",
+  CHAINS:          "chains",
+  CINEMA_DETAIL:   "cinema_detail",
+  MOVIES:          "movies",
+  SHOWTIMES:       "showtimes",
+  CINEMAS:         "cinemas",
+  AUTH:            "auth",
+  BOOKING:         "booking",
+  PAYMENT:         "payment",
+  QR_PAYMENT:      "qr",
+  COMBO:           "combo",
+  PROFILE:         "profile",
+  WALLET:          "wallet",
+  TICKET_HISTORY:  "ticket_history",
+  TICKET_DETAIL:   "ticket_detail",
 });
 
 export const MOVIE_TAB = Object.freeze({
@@ -67,7 +70,7 @@ export const BOOKING = Object.freeze({
 });
 
 export const UI_TEXT = Object.freeze({
-  APP_PROMOTION: "Ưu đãi mới mỗi ngày tại K3-MindX Cinema",
+  APP_PROMOTION: "Ưu đãi mới mỗi ngày tại H&N Cinema",
   UNDER_AGE_WARNING: "Theo quy định của cục điện ảnh, phim này không dành cho khán giả dưới 16 tuổi.",
   CINEMA_DESCRIPTION: [
     "Rạp Beta Cinemas Mỹ Đình tọa lạc tại tầng hầm B1, tòa nhà Golden Palace, Phường Từ Liêm, Hà Nội.",

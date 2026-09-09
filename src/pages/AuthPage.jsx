@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { AUTH_MODE, REQUEST_STATUS } from "../constants/app";
+import { AUTH_MODE, PAGE, REQUEST_STATUS } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
 import Icon from "../components/common/Icon";
 
-function AuthPage({ onBack }) {
+const AUTH_STORAGE_KEY = "hn_user";
+
+function AuthPage({ onBack, onLogin }) {
   const [mode, setMode] = useState(AUTH_MODE.LOGIN);
   const [form, setForm] = useState({ email: "", password: "", name: "", phone: "", confirmPassword: "" });
   const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
@@ -24,8 +26,17 @@ function AuthPage({ onBack }) {
     setStatus(REQUEST_STATUS.LOADING);
     const res = await cinemaService.submitAuth({ mode, payload: form });
     if (res.isSuccessful) {
+      // Lưu user vào localStorage
+      const user = {
+        name: form.name || form.email.split("@")[0],
+        email: form.email,
+        phone: form.phone || "",
+        loginAt: new Date().toISOString(),
+      };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
       setStatus(REQUEST_STATUS.SUCCESS);
-      onBack?.();
+      onLogin?.(user);   // báo App biết đã login
+      onBack?.();        // về trang chủ
     } else {
       setStatus(REQUEST_STATUS.ERROR);
       setError("Đăng nhập thất bại. Vui lòng thử lại.");
@@ -34,7 +45,6 @@ function AuthPage({ onBack }) {
 
   return (
     <div className="auth-page page-scroll">
-      {/* top bar */}
       <div className="top-bar">
         {onBack && <button className="top-bar-icon-btn" onClick={onBack}><Icon name="back" size={20} /></button>}
         <span className="top-bar-title">Tài khoản</span>
@@ -43,11 +53,10 @@ function AuthPage({ onBack }) {
       <div style={{ padding: "0 16px" }}>
         <div className="auth-header">
           <div style={{ fontSize: 48, marginBottom: 8 }}>🎬</div>
-          <h1>K3-MindX Cinema</h1>
+          <h1>H&N Cinema</h1>
           <p>Đặt vé, chọn ghế, tận hưởng phim</p>
         </div>
 
-        {/* tabs */}
         <div className="auth-tabs">
           <button
             className={`auth-tab${mode === AUTH_MODE.LOGIN ? " active" : ""}`}
@@ -63,7 +72,6 @@ function AuthPage({ onBack }) {
           </button>
         </div>
 
-        {/* fields */}
         {mode === AUTH_MODE.REGISTER && (
           <>
             <div className="auth-form-group">
@@ -112,15 +120,27 @@ function AuthPage({ onBack }) {
 
         <div className="auth-social-divider">hoặc</div>
 
-        <button className="auth-social-btn">
+        <button
+          className="auth-social-btn"
+          onClick={() => alert("Tính năng đăng nhập Facebook chưa được tích hợp")}
+        >
           <span>📘</span> Tiếp tục với Facebook
         </button>
-        <button className="auth-social-btn">
+        <button
+          className="auth-social-btn"
+          onClick={() => alert("Tính năng đăng nhập Google chưa được tích hợp")}
+        >
           <span>🔴</span> Tiếp tục với Google
         </button>
 
         {mode === AUTH_MODE.LOGIN && (
-          <div className="auth-link">Quên mật khẩu?</div>
+          <button
+            className="auth-link"
+            style={{ background:"none", border:"none", width:"100%", cursor:"pointer" }}
+            onClick={() => alert("Vui lòng liên hệ hỗ trợ: support@hncinema.vn")}
+          >
+            Quên mật khẩu?
+          </button>
         )}
       </div>
     </div>
