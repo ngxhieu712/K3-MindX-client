@@ -101,9 +101,4 @@ export const cinemaService = {
       expiresIn: BOOKING.PAYMENT_DURATION,
     });
   },
-
-  async submitAuth({ mode, payload }) {
-    // TODO: Replace this fallback with POST /api/auth/login or POST /api/auth/register.
-    return waitForMockResponse({ mode, payload, isSuccessful: true });
-  },
 };

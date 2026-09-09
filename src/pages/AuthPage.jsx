@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { AUTH_MODE, PAGE, REQUEST_STATUS } from "../constants/app";
-import { cinemaService } from "../services/cinemaService";
+import { AUTH_MODE, REQUEST_STATUS } from "../constants/app";
+import { authService } from "../services/authService";
 import Icon from "../components/common/Icon";
 
-const AUTH_STORAGE_KEY = "hn_user";
+
+// const AUTH_STORAGE_KEY = "hn_user";
 
 function AuthPage({ onBack, onLogin }) {
   const [mode, setMode] = useState(AUTH_MODE.LOGIN);
@@ -14,34 +15,34 @@ function AuthPage({ onBack, onLogin }) {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
   const handleSubmit = async () => {
-    setError("");
-    if (mode === AUTH_MODE.REGISTER && form.password !== form.confirmPassword) {
-      setError("Mật khẩu xác nhận không khớp!");
-      return;
-    }
-    if (!form.email || !form.password) {
-      setError("Vui lòng điền đầy đủ thông tin!");
-      return;
-    }
-    setStatus(REQUEST_STATUS.LOADING);
-    const res = await cinemaService.submitAuth({ mode, payload: form });
-    if (res.isSuccessful) {
-      // Lưu user vào localStorage
-      const user = {
-        name: form.name || form.email.split("@")[0],
-        email: form.email,
-        phone: form.phone || "",
-        loginAt: new Date().toISOString(),
-      };
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-      setStatus(REQUEST_STATUS.SUCCESS);
-      onLogin?.(user);   // báo App biết đã login
-      onBack?.();        // về trang chủ
-    } else {
-      setStatus(REQUEST_STATUS.ERROR);
-      setError("Đăng nhập thất bại. Vui lòng thử lại.");
-    }
-  };
+  setError("");
+  if (mode === AUTH_MODE.REGISTER && form.password !== form.confirmPassword) {
+    setError("Mật khẩu xác nhận không khớp!");
+    return;
+  }
+  if (!form.email || !form.password) {
+    setError("Vui lòng điền đầy đủ thông tin!");
+    return;
+  }
+  if (mode === AUTH_MODE.REGISTER && !form.name) {
+    setError("Vui lòng nhập họ tên!");
+    return;
+  }
+
+  setStatus(REQUEST_STATUS.LOADING);
+  const res = await authService.submitAuth({ mode, payload: form });
+
+  if (res.isSuccessful) {
+    setStatus(REQUEST_STATUS.SUCCESS);
+    // refreshToken server đã set qua cookie httpOnly, client không đụng tới
+    // accessToken giữ ở state/context bên App, KHÔNG lưu localStorage
+    onLogin?.(res.user, res.accessToken);
+    onBack?.();
+  } else {
+    setStatus(REQUEST_STATUS.ERROR);
+    setError(res.message || "Đăng nhập thất bại. Vui lòng thử lại.");
+  }
+};
 
   return (
     <div className="auth-page page-scroll">
