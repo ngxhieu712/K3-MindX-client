@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PAGE } from "../constants/app";
-import { loadWallet, loadTickets } from "../data/mockData";
+import { cinemaService } from "../services/cinemaService";
 import Icon from "../components/common/Icon";
 
 const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
@@ -21,13 +21,14 @@ function getRank(count) {
 
 /* ── Settings Modal ── */
 function SettingsModal({ user, onClose, onLogout }) {
-  const [name,  setName]  = useState(user?.name  || "");
-  const [phone, setPhone] = useState(user?.phone || "");
+  const [name,  setName]  = useState(user?.fullName    || "");
+  const [phone, setPhone] = useState(user?.phoneNumber || "");
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {
-    const updated = { ...user, name, phone };
-    localStorage.setItem("hn_user", JSON.stringify(updated));
+    // TODO: hiện chỉ cập nhật state cục bộ, chưa gọi API cập nhật hồ sơ thật
+    // (chưa có endpoint) — không nằm trong 4 yêu cầu gốc.
+    const updated = { ...user, fullName: name, phoneNumber: phone };
     setSaved(true);
     setTimeout(() => { setSaved(false); onClose(updated); }, 1000);
   };
@@ -110,20 +111,38 @@ function SettingsModal({ user, onClose, onLogout }) {
   );
 }
 
-function ProfilePage({ onNavigate, user, onLogout }) {
+function ProfilePage({ onNavigate, user, onLogout, authNotice, onClearAuthNotice }) {
   const [wallet, setWallet]   = useState(null);
   const [tickets, setTickets] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [currentUser, setCurrentUser]   = useState(user);
+  const [toast, setToast] = useState("");
   const isLoggedIn = !!currentUser;
 
   useEffect(() => {
-    setWallet(loadWallet());
-    setTickets(loadTickets());
-  }, []);
+    if (!currentUser) { setWallet(null); setTickets([]); return; }
+    let alive = true;
+    Promise.all([cinemaService.getWallet(), cinemaService.getMyTickets()])
+      .then(([w, t]) => { if (alive) { setWallet(w); setTickets(t); } })
+      .catch(() => { /* trang vẫn hiển thị được, chỉ thiếu số dư/hạng thành viên */ });
+    return () => { alive = false; };
+  }, [currentUser]);
 
   // Sync nếu user prop thay đổi từ ngoài
   useEffect(() => { setCurrentUser(user); }, [user]);
+
+  // Thông báo "cần đăng nhập" khi App điều hướng về đây do bấm mua vé/vào ví/
+  // lịch sử vé lúc chưa đăng nhập (yêu cầu #2).
+  useEffect(() => {
+    if (authNotice) {
+      setToast(authNotice);
+      const t = setTimeout(() => { setToast(""); onClearAuthNotice?.(); }, 3000);
+      return () => clearTimeout(t);
+    }
+  // chỉ cần chạy lại khi NỘI DUNG authNotice đổi; onClearAuthNotice là arrow
+  // function App.jsx tạo mới mỗi render nên đưa vào đây sẽ làm timer bị lặp vô ích.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authNotice]);
 
   const handleSettingsClose = (updatedUser) => {
     if (updatedUser) setCurrentUser(updatedUser);
@@ -180,12 +199,12 @@ function ProfilePage({ onNavigate, user, onLogout }) {
             Truy cập nhanh
           </div>
           {[
-            { icon:"💳", label:"Ví H&N Cinema",   sub: wallet ? `Số dư: ${fmt(wallet.balance)}` : "Nạp tiền & xem lịch sử", page: PAGE.WALLET },
-            { icon:"🎫", label:"Lịch sử vé",       sub:`${tickets.length} vé (${activeTickets.length} còn hiệu lực)`, page: PAGE.TICKET_HISTORY },
+            { icon:"💳", label:"Ví H&N Cinema",   sub: "Đăng nhập để nạp tiền & xem lịch sử" },
+            { icon:"🎫", label:"Lịch sử vé",       sub: "Đăng nhập để xem vé đã mua" },
           ].map(item => (
             <button
-              key={item.page}
-              onClick={() => onNavigate(item.page)}
+              key={item.label}
+              onClick={() => onNavigate(PAGE.AUTH)}
               style={{
                 display:"flex", alignItems:"center", gap:14,
                 width:"100%", padding:"14px 0",
@@ -205,6 +224,18 @@ function ProfilePage({ onNavigate, user, onLogout }) {
             </button>
           ))}
         </div>
+
+        {/* Toast (vd thông báo "cần đăng nhập" khi bị điều hướng từ luồng mua vé) */}
+        {toast && (
+          <div style={{
+            position:"fixed", bottom:"calc(var(--nav-h) + 16px)", left:"50%", transform:"translateX(-50%)",
+            background:"var(--accent)", color:"white", padding:"10px 20px",
+            borderRadius:"var(--radius-full)", fontSize:13, fontWeight:700,
+            boxShadow:"0 4px 16px rgba(0,0,0,0.3)", zIndex:300, whiteSpace:"nowrap",
+          }}>
+            🔒 {toast}
+          </div>
+        )}
 
         <div className="profile-empty">
           <div className="profile-empty-icon">🎫</div>
@@ -238,10 +269,10 @@ function ProfilePage({ onNavigate, user, onLogout }) {
       <div className="profile-hero">
         <div className="profile-user-row">
           <div className="profile-avatar" style={{ fontSize:32 }}>
-            {currentUser.name?.[0]?.toUpperCase() || "U"}
+            {currentUser.fullName?.[0]?.toUpperCase() || "U"}
           </div>
           <div>
-            <div className="profile-name">{currentUser.name || currentUser.email}</div>
+            <div className="profile-name">{currentUser.fullName || currentUser.email}</div>
             <div style={{ fontSize:12, color:"var(--text-muted)", marginTop:2 }}>{currentUser.email}</div>
             <span className="profile-rank" style={{ borderColor:rank.color, color:rank.color, marginTop:4, display:"inline-flex" }}>
               🏅 {rank.name}

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import "./index.css";
 import { DEFAULTS, PAGE, REQUEST_STATUS } from "./constants/app";
 import { cinemaService } from "./services/cinemaService";
-import { loadWallet, saveWallet } from "./data/mockData";
+import { tokenStore } from "../lib/tokenStore";
 import Header from "./components/layout/Header";
 import LoadingState from "./components/common/LoadingState";
 import BookingModal from "./components/booking/BookingModal";
@@ -22,51 +22,83 @@ import ProfilePage       from "./pages/ProfilePage";
 import WalletPage        from "./pages/WalletPage";
 import TicketHistoryPage from "./pages/TicketHistoryPage";
 
-const AUTH_STORAGE_KEY = "hn_user";
-
 const PAGES_WITHOUT_NAV = [
   PAGE.BOOKING, PAGE.PAYMENT, PAGE.QR_PAYMENT, PAGE.AUTH,
   PAGE.WALLET, PAGE.TICKET_HISTORY, PAGE.TICKET_DETAIL,
 ];
 
+// Các trang này bắt buộc phải đăng nhập mới được vào (yêu cầu #2): mua vé,
+// thanh toán, ví, lịch sử vé. Nếu chưa đăng nhập mà rơi vào 1 trong các trang
+// này (dù bấm nút hay do lỗi khác), tự động bật lại tab "Tôi" kèm thông báo.
+const AUTH_REQUIRED_PAGES = [
+  PAGE.BOOKING, PAGE.PAYMENT, PAGE.QR_PAYMENT, PAGE.WALLET, PAGE.TICKET_HISTORY, PAGE.TICKET_DETAIL,
+];
+
 function App() {
   const [catalog, setCatalog]             = useState(null);
   const [catalogStatus, setCatalogStatus] = useState(REQUEST_STATUS.IDLE);
+  const [catalogError, setCatalogError]   = useState(null);
   const [page, setPage]                   = useState(DEFAULTS.PAGE);
-  const [cinema, setCinema]               = useState(DEFAULTS.CINEMA_NAME);
+  // cinema: null cho tới khi người dùng thực sự chọn 1 rạp thật (qua Chọn rạp).
+  // Trước đây là 1 chuỗi tên cố định (mock) — giờ là { id, name } để các trang
+  // sau (Showtimes, BookingModal...) có cinemaId thật gọi API.
+  const [cinema, setCinema]               = useState(null);
   const [selectedChain, setSelectedChain] = useState(null);
-  const [user, setUser]                   = useState(() => {
-    try { return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY)); } catch { return null; }
-  });
+  // Đăng nhập chỉ lưu trong bộ nhớ (giống accessToken ở tokenStore), mất khi
+  // F5 giữa luồng — xem ghi chú ở B5 (khôi phục phiên qua refresh-token cookie).
+  const [user, setUser]                   = useState(null);
+  // Thông báo hiển thị ở tab "Tôi" khi bị chuyển hướng về đây vì chưa đăng nhập.
+  const [authNotice, setAuthNotice]       = useState("");
 
   /* booking flow */
   const [activeMovie, setActiveMovie]     = useState(null);
   const [selectedTime, setSelectedTime]   = useState(DEFAULTS.SHOWTIME);
   const [selectedDate, setSelectedDate]   = useState("");
+  const [selectedShowtimeId, setSelectedShowtimeId] = useState(null);
   const [selectedSeats, setSelectedSeats] = useState([]);
+  const [booking, setBooking]             = useState(null); // kết quả POST /api/customer/bookings (giữ ghế thật)
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [payMethod, setPayMethod]         = useState("bank");
   const [isModalOpen, setModalOpen]       = useState(false);
 
-  useEffect(() => {
+  const loadCatalog = () => {
     let alive = true;
     setCatalogStatus(REQUEST_STATUS.LOADING);
-    cinemaService.getInitialCatalog().then(res => {
-      if (alive) {
+    setCatalogError(null);
+    cinemaService.getInitialCatalog()
+      .then(res => {
+        if (!alive) return;
         setCatalog(res);
-        setActiveMovie(res.movies[DEFAULTS.MOVIE_INDEX]);
+        setActiveMovie(res.movies?.[DEFAULTS.MOVIE_INDEX] ?? null);
         setCatalogStatus(REQUEST_STATUS.SUCCESS);
-      }
-    });
+      })
+      .catch(err => {
+        if (!alive) return;
+        setCatalogError(err.message || "Không kết nối được máy chủ");
+        setCatalogStatus(REQUEST_STATUS.ERROR);
+      });
     return () => { alive = false; };
-  }, []);
+  };
 
-  const handleLogin = (userData) => {
+  useEffect(() => loadCatalog(), []);
+
+  // Lớp bảo vệ chung: nếu vì lý do gì đó (bấm nút khác, đăng xuất giữa chừng...)
+  // page chuyển sang 1 trang bắt buộc đăng nhập mà chưa có user, tự bật lại
+  // tab "Tôi" kèm thông báo — không chỉ chặn ở nút "Xác nhận suất chiếu".
+  useEffect(() => {
+    if (AUTH_REQUIRED_PAGES.includes(page) && !user) {
+      setAuthNotice("Vui lòng đăng nhập để tiếp tục");
+      setPage(PAGE.PROFILE);
+    }
+  }, [page, user]);
+
+  const handleLogin = (userData, accessToken) => {
     setUser(userData);
+    tokenStore.set(accessToken);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
+    tokenStore.clear();
     setUser(null);
     setPage(PAGE.HOME);
   };
@@ -77,21 +109,28 @@ function App() {
     setModalOpen(true);
   };
 
-  const confirmShowtime = (time, date) => {
+  const confirmShowtime = (time, date, showtimeId) => {
+    if (!user) {
+      setModalOpen(false);
+      setAuthNotice("Vui lòng đăng nhập để tiếp tục mua vé");
+      setPage(PAGE.PROFILE);
+      return;
+    }
     setSelectedTime(time);
     if (date) setSelectedDate(date);
+    if (showtimeId) setSelectedShowtimeId(showtimeId);
     setModalOpen(false);
     setPage(PAGE.BOOKING);
   };
 
-  const handleSelectChain = (chain, cinema) => {
+  const handleSelectChain = (chain, cinemaObj) => {
     setSelectedChain(chain);
-    if (cinema) setCinema(cinema.name);
+    if (cinemaObj) setCinema({ id: cinemaObj.id, name: cinemaObj.name });
     setPage(PAGE.CINEMA_DETAIL);
   };
 
   const handleSelectCinema = (cinemaObj) => {
-    setCinema(cinemaObj.name);
+    setCinema({ id: cinemaObj.id, name: cinemaObj.name });
     setPage(PAGE.SHOWTIMES);
   };
 
@@ -102,7 +141,21 @@ function App() {
     setPage(PAGE.QR_PAYMENT);
   };
 
-  if (catalogStatus === REQUEST_STATUS.LOADING || !catalog || !activeMovie) {
+  if (catalogStatus === REQUEST_STATUS.ERROR) {
+    return (
+      <div className="app-shell">
+        <div className="loading-state" style={{ flexDirection: "column", gap: 12, padding: 24, textAlign: "center" }}>
+          <div>😕 Không tải được dữ liệu phim/rạp.</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{catalogError}</div>
+          <button className="booking-continue-btn" style={{ padding: "10px 20px" }} onClick={loadCatalog}>
+            Thử lại
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (catalogStatus === REQUEST_STATUS.LOADING || !catalog) {
     return (
       <div className="app-shell">
         <LoadingState label="Đang tải H&N Cinema..." />
@@ -113,7 +166,7 @@ function App() {
   const renderPage = () => {
     switch (page) {
       case PAGE.HOME:
-        return <HomePage movies={catalog.movies} onBuy={startBooking} onNavigate={setPage} user={user} />;
+        return <HomePage movies={catalog.movies} banners={catalog.banners} onBuy={startBooking} onNavigate={setPage} user={user} />;
 
       case PAGE.MOVIES:
         return <MoviesPage movies={catalog.movies} onBuy={startBooking} onNavigate={setPage} />;
@@ -137,7 +190,6 @@ function App() {
         return (
           <ShowtimesPage
             cinema={cinema}
-            dates={catalog.dates}
             onBuy={startBooking}
             onBack={() => setPage(PAGE.CHAINS)}
           />
@@ -156,8 +208,12 @@ function App() {
           <BookingPage
             movie={activeMovie}
             selectedTime={selectedTime}
-            cinema={cinema}
-            onNext={(seats) => { setSelectedSeats(seats); setPage(PAGE.PAYMENT); }}
+            selectedShowtimeId={selectedShowtimeId}
+            onNext={(bookingRes) => {
+              setBooking(bookingRes);
+              setSelectedSeats(bookingRes.seatDetails?.map(s => s.seatName) ?? []);
+              setPage(PAGE.PAYMENT);
+            }}
             onBack={() => setPage(PAGE.SHOWTIMES)}
           />
         );
@@ -168,6 +224,7 @@ function App() {
             movie={activeMovie}
             selectedTime={selectedTime}
             selectedSeats={selectedSeats}
+            booking={booking}
             cinema={cinema}
             onBack={() => setPage(PAGE.BOOKING)}
             onPay={handlePay}
@@ -177,13 +234,14 @@ function App() {
       case PAGE.QR_PAYMENT:
         return (
           <QrPaymentPage
+            bookingId={booking?._id}
             amountThousand={paymentAmount}
             payMethod={payMethod}
             selectedSeats={selectedSeats}
             movie={activeMovie}
-            cinema={cinema}
+            cinema={cinema?.name}
             selectedTime={selectedTime}
-            selectedDate={selectedDate || catalog.dates[DEFAULTS.SELECTED_DATE_INDEX]}
+            selectedDate={selectedDate}
             onCancel={() => setPage(PAGE.HOME)}
             onGoToTickets={() => setPage(PAGE.TICKET_HISTORY)}
           />
@@ -198,6 +256,8 @@ function App() {
             onNavigate={setPage}
             user={user}
             onLogout={handleLogout}
+            authNotice={authNotice}
+            onClearAuthNotice={() => setAuthNotice("")}
           />
         );
 
@@ -208,7 +268,7 @@ function App() {
         return <TicketHistoryPage onNavigate={setPage} />;
 
       default:
-        return <HomePage movies={catalog.movies} onBuy={startBooking} onNavigate={setPage} user={user} />;
+        return <HomePage movies={catalog.movies} banners={catalog.banners} onBuy={startBooking} onNavigate={setPage} user={user} />;
     }
   };
 
@@ -221,6 +281,7 @@ function App() {
       {isModalOpen && activeMovie && (
         <BookingModal
           movie={activeMovie}
+          cinema={cinema}
           onClose={() => setModalOpen(false)}
           onConfirm={confirmShowtime}
         />

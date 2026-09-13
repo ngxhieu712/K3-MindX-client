@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { REQUEST_STATUS, formatMoney } from "../constants/app";
+import { REQUEST_STATUS } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import { loadWallet, saveWallet, loadTickets, saveTickets } from "../data/mockData";
 import Icon from "../components/common/Icon";
 
 function useCountdown(seconds) {
@@ -18,8 +17,10 @@ function useCountdown(seconds) {
 
 const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
 
-// Tạo QR pattern giả từ seed
-function QRCode({ data, size = 180 }) {
+// QR trang trí cho MÀN HÌNH THÀNH CÔNG (xuất trình tại quầy) — chưa có QR vé
+// thật (cần sinh Ticket riêng từng ghế, dự kiến làm sau nếu cần). QR THANH
+// TOÁN (màn chờ chuyển khoản) dùng ảnh VietQR thật từ server, không dùng cái này.
+function DecorativeQRCode({ data, size = 180 }) {
   const seed = data.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const cols = 21;
   const cells = Array.from({ length: cols * cols }, (_, i) => {
@@ -47,77 +48,68 @@ function QRCode({ data, size = 180 }) {
   );
 }
 
-function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [], movie = null, cinema = "", selectedTime = "", selectedDate = "", onCancel, onGoToTickets }) {
+function QrPaymentPage({ bookingId, amountThousand, payMethod = "bank", selectedSeats = [], movie = null, cinema = "", selectedTime = "", selectedDate = "", onCancel, onGoToTickets }) {
   const [data, setData] = useState(null);
   const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
   const [paid, setPaid] = useState(false);
-  const [ticketId] = useState("TK" + Date.now().toString().slice(-6));
+  const [confirmStatus, setConfirmStatus] = useState(REQUEST_STATUS.IDLE);
+  const [error, setError] = useState("");
   const { display: countdown, expired } = useCountdown(payMethod === "bank" ? 9 * 60 + 56 : 0);
 
   const amount = amountThousand * 1000;
-  const qrData = `HN-${ticketId}-${(selectedSeats || []).join("")}-${Date.now()}`;
+
+  // Không có bookingId hợp lệ — chặn sớm, không gọi API với id rỗng.
+  const invalidBooking = !bookingId;
 
   useEffect(() => {
+    if (invalidBooking) return;
     let alive = true;
-    setStatus(REQUEST_STATUS.LOADING);
-    cinemaService.createQrPayment({ amountThousand }).then(res => {
-      if (alive) { setData(res); setStatus(REQUEST_STATUS.SUCCESS); }
-    });
-    return () => { alive = false; };
-  }, [amountThousand]);
 
-  // Nếu thanh toán bằng ví → tự động xử lý ngay
-  useEffect(() => {
-    if (payMethod === "wallet" && data && !paid) {
-      const wallet = loadWallet();
-      if (wallet.balance >= amount) {
-        // Trừ tiền ví
-        const tx = {
-          id: "W" + Date.now(),
-          type: "payment",
-          amount: -amount,
-          desc: `Thanh toán vé ${ticketId}`,
-          date: new Date().toLocaleString("vi-VN"),
-          status: "success",
-        };
-        saveWallet({ balance: wallet.balance - amount, transactions: [tx, ...wallet.transactions] });
-        // Tạo vé
-        _createTicket();
-        setPaid(true);
-      }
+    if (payMethod === "wallet") {
+      // Ví: xử lý ngay, không cần hiện QR trước.
+      setStatus(REQUEST_STATUS.LOADING);
+      cinemaService.payBookingWithWallet(bookingId)
+        .then(() => { if (alive) { setPaid(true); setStatus(REQUEST_STATUS.SUCCESS); } })
+        .catch(err => { if (alive) { setError(err.message || "Thanh toán bằng ví thất bại"); setStatus(REQUEST_STATUS.ERROR); } });
+    } else {
+      // Ngân hàng/QR: lấy QR thật trước, chờ bấm nút demo xác nhận.
+      setStatus(REQUEST_STATUS.LOADING);
+      cinemaService.createQrPayment(bookingId)
+        .then(res => { if (alive) { setData(res); setStatus(REQUEST_STATUS.SUCCESS); } })
+        .catch(err => { if (alive) { setError(err.message || "Không tạo được mã QR"); setStatus(REQUEST_STATUS.ERROR); } });
     }
-  }, [data, payMethod]);
 
-  const _createTicket = () => {
-    const tickets = loadTickets();
-    const now = new Date();
-    const newTicket = {
-      id: ticketId,
-      bookingId: "BK" + Date.now(),
-      movie: movie?.title ?? "Phim",
-      poster: movie?.poster ?? "",
-      cinema: cinema || "Rạp chiếu",
-      room: "Phòng 1",
-      format: "2D Phụ đề",
-      date: selectedDate || now.toLocaleDateString("vi-VN"),
-      time: selectedTime || "—",
-      seats: selectedSeats || [],
-      total: amount,
-      payMethod,
-      status: "active",
-      purchasedAt: now.toLocaleString("vi-VN"),
-      qrData,
-    };
-    saveTickets([newTicket, ...tickets]);
+    return () => { alive = false; };
+  }, [bookingId, payMethod, invalidBooking]);
+
+  // Nút "Demo: đã chuyển khoản" — xác nhận thanh toán ngân hàng thật (server
+  // chuyển booking pending -> confirmed), không còn tự bịa vé lưu localStorage.
+  const handleSimulatePaid = async () => {
+    if (confirmStatus === REQUEST_STATUS.LOADING) return;
+    setConfirmStatus(REQUEST_STATUS.LOADING);
+    setError("");
+    try {
+      await cinemaService.confirmBankPaymentDemo(bookingId);
+      setPaid(true);
+      setConfirmStatus(REQUEST_STATUS.SUCCESS);
+    } catch (err) {
+      setConfirmStatus(REQUEST_STATUS.ERROR);
+      setError(err.message || "Xác nhận thanh toán thất bại");
+    }
   };
 
-  // Giả lập thanh toán ngân hàng thành công sau 5 giây (demo)
-  const handleSimulatePaid = () => {
-    _createTicket();
-    setPaid(true);
-  };
+  if (invalidBooking) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", marginBottom: 16 }}>
+          Không tìm thấy thông tin đơn đặt vé.
+        </div>
+        <button className="booking-continue-btn" onClick={onCancel}>Về trang chủ</button>
+      </div>
+    );
+  }
 
-  if (status === REQUEST_STATUS.LOADING || !data) {
+  if (status === REQUEST_STATUS.LOADING || (!data && payMethod === "bank" && !paid)) {
     return (
       <div className="page-scroll" style={{ paddingTop:60 }}>
         <div className="loading-state">
@@ -128,8 +120,18 @@ function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [],
     );
   }
 
+  if (status === REQUEST_STATUS.ERROR && !paid) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--red)", marginBottom: 16 }}>⚠️ {error}</div>
+        <button className="booking-continue-btn" onClick={onCancel}>Về trang chủ</button>
+      </div>
+    );
+  }
+
   /* ── Màn hình thành công ── */
   if (paid) {
+    const qrData = `HN-${bookingId}`;
     return (
       <div className="qr-page page-scroll">
         <div className="top-bar">
@@ -150,22 +152,17 @@ function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [],
             Đặt vé thành công!
           </div>
           <div style={{ fontSize:14, color:"var(--text-sub)", marginBottom:24 }}>
-            Mã vé của bạn đã được tạo. Xuất trình QR tại quầy soát vé.
+            Vé của bạn đã được lưu vào lịch sử vé. Xuất trình QR tại quầy soát vé.
           </div>
         </div>
 
-        {/* QR vé */}
+        {/* QR vé (trang trí — vé thật xem trong Lịch sử vé) */}
         <div style={{ display:"flex", justifyContent:"center", marginBottom:16 }}>
-          <QRCode data={qrData} size={180} />
-        </div>
-
-        <div style={{ textAlign:"center", fontSize:11, color:"var(--text-muted)", marginBottom:16, fontFamily:"monospace", letterSpacing:1 }}>
-          {qrData}
+          <DecorativeQRCode data={qrData} size={180} />
         </div>
 
         <div className="payment-card">
           {[
-            { label:"Mã vé",       value: ticketId },
             { label:"Phim",        value: movie?.title || "—" },
             { label:"Rạp",         value: cinema || "—" },
             { label:"Ngày chiếu",  value: selectedDate || "—" },
@@ -208,7 +205,7 @@ function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [],
     );
   }
 
-  /* ── Màn hình chờ thanh toán ngân hàng ── */
+  /* ── Màn hình chờ thanh toán ngân hàng (QR THẬT từ server) ── */
   return (
     <div className="qr-page page-scroll">
       <div className="top-bar">
@@ -220,10 +217,10 @@ function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [],
 
       <div className="qr-card" style={{ marginTop:16 }}>
         <div className="qr-bank-name">🏦 {data.bankName}</div>
-        <div className="qr-amount">{fmt(amount)}</div>
+        <div className="qr-amount">{fmt(data.amount)}</div>
 
         <div style={{ display:"flex", justifyContent:"center", marginBottom:16 }}>
-          <QRCode data={data.accountNumber + amount} size={180} />
+          <img src={data.qrImageUrl} alt="VietQR" width={220} style={{ borderRadius: "var(--radius-sm)" }} />
         </div>
 
         {!expired ? (
@@ -240,7 +237,8 @@ function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [],
         <div className="payment-section-title">Thông tin chuyển khoản</div>
         {[
           { label:"Số tài khoản",  value: data.accountNumber },
-          { label:"Số tiền",       value: fmt(amount) },
+          { label:"Chủ tài khoản", value: data.accountName },
+          { label:"Số tiền",       value: fmt(data.amount) },
           { label:"Nội dung CK",   value: data.transferContent },
         ].map(r => (
           <div key={r.label} className="qr-info-row">
@@ -254,16 +252,23 @@ function QrPaymentPage({ amountThousand, payMethod = "bank", selectedSeats = [],
         Vé sẽ được cấp tự động sau khi xác nhận thanh toán thành công.
       </div>
 
-      {/* Demo button */}
+      {error && (
+        <div style={{ padding: "0 16px 8px", color: "var(--red)", fontSize: 13, textAlign: "center" }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* Demo button — xác nhận thật với server (không còn tự bịa ở client) */}
       <div style={{ padding:"0 16px 8px" }}>
         <button
           onClick={handleSimulatePaid}
+          disabled={confirmStatus === REQUEST_STATUS.LOADING}
           style={{
             width:"100%", padding:14, borderRadius:"var(--radius-sm)",
             background:"var(--green)", color:"white", fontWeight:700, fontSize:14,
           }}
         >
-          ✓ Mô phỏng đã thanh toán (Demo)
+          {confirmStatus === REQUEST_STATUS.LOADING ? "Đang xác nhận..." : "✓ Mô phỏng đã thanh toán (Demo)"}
         </button>
       </div>
 

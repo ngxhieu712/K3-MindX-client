@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
-import { PAGE, DEFAULTS } from "../constants/app";
-import {
-  loadTickets, saveTickets, loadWallet, saveWallet,
-  REFUND_FEE_PERCENT,
-} from "../data/mockData";
+import { PAGE, REQUEST_STATUS } from "../constants/app";
+import { cinemaService } from "../services/cinemaService";
+import { REFUND_FEE_PERCENT } from "../data/mockData";
 import Icon from "../components/common/Icon";
 
 const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
@@ -12,16 +10,14 @@ const STATUS_CONFIG = {
   active:         { label: "Còn hiệu lực",   badge: "badge-green" },
   used:           { label: "Đã sử dụng",     badge: "badge-gray" },
   refunded:       { label: "Đã hoàn",        badge: "badge-blue" },
-  refund_pending: { label: "Đang hoàn",      badge: "badge-gold" },
+  refund_pending: { label: "Đang chờ duyệt", badge: "badge-gold" },
 };
 
-/* ── QR Ticket Modal ── */
+/* ── QR Ticket Modal (trang trí — vé thật đã lưu trên server) ── */
 function QRModal({ ticket, onClose }) {
-  // Tạo pattern QR giả từ qrData string
   const seed = ticket.qrData.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
   const cells = Array.from({ length: 25 * 25 }, (_, i) => {
     const x = i % 25; const y = Math.floor(i / 25);
-    // Corners
     if ((x < 7 && y < 7) || (x > 17 && y < 7) || (x < 7 && y > 17)) return true;
     return ((seed * (i + 1) * 31 + x * 17 + y * 13) % 3) === 0;
   });
@@ -32,10 +28,9 @@ function QRModal({ ticket, onClose }) {
         <div className="modal-handle" />
         <div style={{ textAlign:"center", marginBottom:16 }}>
           <div style={{ fontSize:16, fontWeight:800, color:"var(--text)", marginBottom:4 }}>Vé điện tử</div>
-          <div style={{ fontSize:12, color:"var(--text-sub)" }}>{ticket.id}</div>
+          <div style={{ fontSize:12, color:"var(--text-sub)" }}>{ticket.bookingId}</div>
         </div>
 
-        {/* QR Code giả */}
         <div style={{
           background:"white", borderRadius:"var(--radius)", padding:16,
           margin:"0 auto 16px", width:200, height:200,
@@ -53,12 +48,11 @@ function QRModal({ ticket, onClose }) {
           {ticket.qrData}
         </div>
 
-        {/* Ticket info */}
         <div style={{ background:"var(--bg-card)", borderRadius:"var(--radius-sm)", padding:"14px 16px", marginBottom:16 }}>
           <div style={{ fontSize:15, fontWeight:800, color:"var(--text)", marginBottom:10 }}>{ticket.movie}</div>
           {[
             ["🏛", ticket.cinema],
-            ["🎬", `${ticket.room} · ${ticket.format}`],
+            ["🎬", [ticket.room, ticket.format].filter(Boolean).join(" · ")],
             ["📅", `${ticket.date} · ${ticket.time}`],
             ["💺", ticket.seats.join(", ")],
             ["💰", fmt(ticket.total)],
@@ -85,8 +79,8 @@ function QRModal({ ticket, onClose }) {
   );
 }
 
-/* ── Refund Confirm Modal ── */
-function RefundModal({ ticket, onClose, onConfirm }) {
+/* ── Refund Request Modal ── */
+function RefundModal({ ticket, onClose, onConfirm, submitting }) {
   const fee = Math.round(ticket.total * REFUND_FEE_PERCENT / 100);
   const refundAmount = ticket.total - fee;
 
@@ -104,7 +98,6 @@ function RefundModal({ ticket, onClose, onConfirm }) {
           <div style={{ fontSize:12, color:"var(--text-sub)" }}>Ghế: {ticket.seats.join(", ")}</div>
         </div>
 
-        {/* Breakdown */}
         <div style={{ background:"var(--bg-card)", borderRadius:"var(--radius-sm)", padding:14, marginBottom:16 }}>
           {[
             { label:"Tiền vé gốc",                value: fmt(ticket.total),  color:"var(--text)" },
@@ -116,7 +109,7 @@ function RefundModal({ ticket, onClose, onConfirm }) {
             </div>
           ))}
           <div style={{ display:"flex", justifyContent:"space-between", padding:"10px 0 0", fontSize:15, fontWeight:800 }}>
-            <span style={{ color:"var(--text)" }}>Hoàn về ví</span>
+            <span style={{ color:"var(--text)" }}>Dự kiến hoàn về ví</span>
             <span style={{ color:"var(--green)" }}>{fmt(refundAmount)}</span>
           </div>
         </div>
@@ -126,7 +119,7 @@ function RefundModal({ ticket, onClose, onConfirm }) {
           borderRadius:"var(--radius-sm)", padding:"10px 14px", marginBottom:16,
           fontSize:12, color:"var(--gold)",
         }}>
-          ⚠️ Sau khi hoàn vé, mã QR sẽ bị vô hiệu hoá và không thể khôi phục.
+          ⚠️ Yêu cầu sẽ được quản trị viên xét duyệt. Tiền chỉ về ví sau khi yêu cầu được duyệt.
         </div>
 
         <div style={{ display:"flex", gap:8 }}>
@@ -141,14 +134,15 @@ function RefundModal({ ticket, onClose, onConfirm }) {
             Hủy
           </button>
           <button
-            onClick={() => onConfirm(refundAmount)}
+            disabled={submitting}
+            onClick={onConfirm}
             style={{
               flex:1, padding:13,
               background:"var(--accent)", color:"white",
               borderRadius:"var(--radius-sm)", fontWeight:700, fontSize:14,
             }}
           >
-            Xác nhận hoàn
+            {submitting ? "Đang gửi..." : "Gửi yêu cầu"}
           </button>
         </div>
       </div>
@@ -158,61 +152,63 @@ function RefundModal({ ticket, onClose, onConfirm }) {
 
 /* ── Main Page ── */
 function TicketHistoryPage({ onNavigate }) {
-  const [tickets, setTickets] = useState(loadTickets);
+  const [tickets, setTickets] = useState([]);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
   const [filter, setFilter] = useState("all");
   const [qrTicket, setQrTicket] = useState(null);
   const [refundTicket, setRefundTicket] = useState(null);
+  const [refundSubmitting, setRefundSubmitting] = useState(false);
   const [toast, setToast] = useState("");
 
-  useEffect(() => { saveTickets(tickets); }, [tickets]);
+  const loadTickets = () => {
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getMyTickets()
+      .then(res => { if (alive) { setTickets(res); setStatus(REQUEST_STATUS.SUCCESS); } })
+      .catch(() => { if (alive) setStatus(REQUEST_STATUS.ERROR); });
+    return () => { alive = false; };
+  };
+
+  useEffect(() => loadTickets(), []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
 
-  const handleRefund = (ticket, refundAmount) => {
-    // Cập nhật trạng thái vé
-    setTickets(ts => ts.map(t =>
-      t.id === ticket.id
-        ? { ...t, status:"refunded", refundedAt: new Date().toLocaleString("vi-VN"), refundAmount }
-        : t
-    ));
-    // Cộng tiền vào ví
-    const wallet = loadWallet();
-    const tx = {
-      id: "W" + Date.now(),
-      type: "refund",
-      amount: refundAmount,
-      desc: `Hoàn vé ${ticket.id} (-${REFUND_FEE_PERCENT}% phí)`,
-      date: new Date().toLocaleString("vi-VN"),
-      status: "success",
-    };
-    saveWallet({ balance: wallet.balance + refundAmount, transactions: [tx, ...wallet.transactions] });
-
-    // Thông báo admin (localStorage key cho admin đọc)
-    const refunds = JSON.parse(localStorage.getItem("hn_refunds") || "[]");
-    refunds.unshift({
-      id: "RF" + Date.now(),
-      ticketId: ticket.id,
-      bookingId: ticket.bookingId,
-      movie: ticket.movie,
-      cinema: ticket.cinema,
-      date: ticket.date,
-      time: ticket.time,
-      seats: ticket.seats,
-      originalAmount: ticket.total,
-      refundAmount,
-      fee: ticket.total - refundAmount,
-      feePercent: REFUND_FEE_PERCENT,
-      userName: "Nguyễn Văn An",
-      requestedAt: new Date().toLocaleString("vi-VN"),
-      status: "completed",
-    });
-    localStorage.setItem("hn_refunds", JSON.stringify(refunds));
-
-    setRefundTicket(null);
-    showToast(`Hoàn ${refundAmount.toLocaleString("vi-VN")}đ về ví thành công!`);
+  const handleRefundRequest = async () => {
+    if (!refundTicket || refundSubmitting) return;
+    setRefundSubmitting(true);
+    try {
+      await cinemaService.requestRefund(refundTicket.id);
+      setTickets(ts => ts.map(t => t.id === refundTicket.id ? { ...t, status: "refund_pending" } : t));
+      setRefundTicket(null);
+      showToast("Đã gửi yêu cầu hoàn vé, chờ quản trị viên duyệt");
+    } catch (err) {
+      showToast(err.message || "Gửi yêu cầu hoàn vé thất bại");
+    } finally {
+      setRefundSubmitting(false);
+    }
   };
 
   const filtered = tickets.filter(t => filter === "all" || t.status === filter);
+
+  if (status === REQUEST_STATUS.LOADING) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải lịch sử vé...
+        </div>
+      </div>
+    );
+  }
+
+  if (status === REQUEST_STATUS.ERROR) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", marginBottom: 16 }}>😕 Không tải được lịch sử vé.</div>
+        <button className="booking-continue-btn" onClick={loadTickets}>Thử lại</button>
+      </div>
+    );
+  }
 
   return (
     <div className="page-scroll">
@@ -265,7 +261,6 @@ function TicketHistoryPage({ onNavigate }) {
               background:"var(--bg-card)", border:"1px solid var(--border)",
               borderRadius:"var(--radius)", marginBottom:12, overflow:"hidden",
             }}>
-              {/* Header */}
               <div style={{ display:"flex", gap:12, padding:"14px 14px 10px" }}>
                 <img
                   src={ticket.poster}
@@ -280,7 +275,7 @@ function TicketHistoryPage({ onNavigate }) {
                   </div>
                   <div style={{ fontSize:12, color:"var(--text-sub)", marginBottom:2 }}>{ticket.cinema}</div>
                   <div style={{ fontSize:12, color:"var(--text-sub)", marginBottom:6 }}>
-                    {ticket.date} · {ticket.time} · {ticket.room}
+                    {ticket.date} · {ticket.time}{ticket.room ? ` · ${ticket.room}` : ""}
                   </div>
                   <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                     <span style={{
@@ -302,33 +297,22 @@ function TicketHistoryPage({ onNavigate }) {
                 </div>
               </div>
 
-              {/* Divider dashed */}
               <div style={{ borderTop:"1px dashed var(--border)", margin:"0 14px", position:"relative" }}>
-                <div style={{
-                  position:"absolute", left:-24, top:-10,
-                  width:20, height:20, borderRadius:"50%",
-                  background:"var(--bg)",
-                }} />
-                <div style={{
-                  position:"absolute", right:-24, top:-10,
-                  width:20, height:20, borderRadius:"50%",
-                  background:"var(--bg)",
-                }} />
+                <div style={{ position:"absolute", left:-24, top:-10, width:20, height:20, borderRadius:"50%", background:"var(--bg)" }} />
+                <div style={{ position:"absolute", right:-24, top:-10, width:20, height:20, borderRadius:"50%", background:"var(--bg)" }} />
               </div>
 
-              {/* Footer */}
               <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px" }}>
                 <div>
                   <div style={{ fontSize:12, color:"var(--text-muted)" }}>Tổng tiền</div>
                   <div style={{ fontSize:16, fontWeight:800, color:"var(--accent)" }}>{fmt(ticket.total)}</div>
-                  {ticket.status==="refunded" && (
+                  {ticket.status==="refunded" && ticket.refundAmount != null && (
                     <div style={{ fontSize:11, color:"var(--green)", marginTop:2 }}>
                       Đã hoàn {fmt(ticket.refundAmount)}
                     </div>
                   )}
                 </div>
                 <div style={{ display:"flex", gap:8 }}>
-                  {/* Xem QR */}
                   <button
                     onClick={() => setQrTicket(ticket)}
                     style={{
@@ -339,7 +323,6 @@ function TicketHistoryPage({ onNavigate }) {
                   >
                     Xem QR
                   </button>
-                  {/* Hoàn vé — chỉ cho active */}
                   {ticket.status === "active" && (
                     <button
                       onClick={() => setRefundTicket(ticket)}
@@ -360,17 +343,16 @@ function TicketHistoryPage({ onNavigate }) {
         })}
       </div>
 
-      {/* Modals */}
       {qrTicket && <QRModal ticket={qrTicket} onClose={() => setQrTicket(null)} />}
       {refundTicket && (
         <RefundModal
           ticket={refundTicket}
+          submitting={refundSubmitting}
           onClose={() => setRefundTicket(null)}
-          onConfirm={(amt) => handleRefund(refundTicket, amt)}
+          onConfirm={handleRefundRequest}
         />
       )}
 
-      {/* Toast */}
       {toast && (
         <div style={{
           position:"fixed", bottom:"calc(var(--nav-h) + 16px)", left:"50%", transform:"translateX(-50%)",

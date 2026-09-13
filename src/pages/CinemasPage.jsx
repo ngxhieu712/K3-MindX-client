@@ -11,9 +11,21 @@ function CinemasPage({ cinema, onNavigate }) {
   useEffect(() => {
     let alive = true;
     setStatus(REQUEST_STATUS.LOADING);
-    cinemaService.getCinemaDetails(cinema).then(res => {
+
+    (async () => {
+      // Chưa có rạp nào được chọn trước đó (trang này hiện chưa có lối vào từ
+      // menu) -> mặc định lấy rạp đầu tiên trong danh sách thật, tránh trắng trang.
+      let cinemaId = cinema?.id;
+      if (!cinemaId) {
+        const cinemas = await cinemaService.getCinemas();
+        cinemaId = cinemas[0]?.id;
+      }
+      if (!cinemaId) { if (alive) setStatus(REQUEST_STATUS.ERROR); return; }
+
+      const res = await cinemaService.getCinemaDetail(cinemaId);
       if (alive) { setData(res); setStatus(REQUEST_STATUS.SUCCESS); }
-    });
+    })();
+
     return () => { alive = false; };
   }, [cinema]);
 
@@ -38,8 +50,8 @@ function CinemasPage({ cinema, onNavigate }) {
         <span className="top-bar-title">{data.name}</span>
       </div>
 
-      {/* hero image */}
-      <img src={data.image} alt={data.name} className="cinema-detail-image" />
+      {/* hero image (chỉ hiện nếu có ảnh thật) */}
+      {data.image && <img src={data.image} alt={data.name} className="cinema-detail-image" />}
 
       <div className="cinema-detail-body">
         <div className="cinema-detail-name">{data.name}</div>

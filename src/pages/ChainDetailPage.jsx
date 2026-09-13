@@ -1,7 +1,6 @@
-import { PAGE } from "../constants/app";
 import Icon from "../components/common/Icon";
 
-function ChainDetailPage({ chain, cinema, onSelectCinema, onBack }) {
+function ChainDetailPage({ chain, onSelectCinema, onBack }) {
   // If a specific cinema was already selected, go straight to showtimes UI
   const targetChain = chain;
 
@@ -65,18 +64,14 @@ function ChainDetailPage({ chain, cinema, onSelectCinema, onBack }) {
               {ci.address.split(",").slice(-2).join(",").trim()}
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-              <span style={{
-                fontSize: 11, background: "var(--bg-elevated)", color: "var(--text-sub)",
-                padding: "2px 8px", borderRadius: "var(--radius-full)", fontWeight: 600,
-              }}>
-                🗺 {ci.distance}
-              </span>
-              <span style={{
-                fontSize: 11, background: "var(--bg-elevated)", color: "var(--text-sub)",
-                padding: "2px 8px", borderRadius: "var(--radius-full)", fontWeight: 600,
-              }}>
-                🎞 {ci.screens} phòng
-              </span>
+              {ci.districtName && (
+                <span style={{
+                  fontSize: 11, background: "var(--bg-elevated)", color: "var(--text-sub)",
+                  padding: "2px 8px", borderRadius: "var(--radius-full)", fontWeight: 600,
+                }}>
+                  📍 {ci.districtName}
+                </span>
+              )}
             </div>
           </div>
           <div className="cinema-item-actions">

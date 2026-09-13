@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { DEFAULTS, MOVIE_TAB, PAGE } from "../constants/app";
+import { MOVIE_TAB, PAGE } from "../constants/app";
 import { reviews } from "../data/mockData";
 import Icon from "../components/common/Icon";
 
@@ -19,10 +19,10 @@ function MoviesPage({ movies, onBuy, onNavigate }) {
 
   const byTab = useMemo(() => {
     if (activeTab === MOVIE_TAB.SOON)
-      return movies.slice(DEFAULTS.UPCOMING_MOVIE_START_INDEX);
+      return movies.filter(m => m.showingStatus === "coming_soon");
     if (activeTab === MOVIE_TAB.SPECIAL)
-      return movies.slice(DEFAULTS.SPECIAL_MOVIE_START_INDEX, DEFAULTS.SPECIAL_MOVIE_END_INDEX);
-    return movies;
+      return movies.filter(m => m.hot); // phim nổi bật — dùng lại cờ "hot" thật, không còn slice cứng theo index
+    return movies.filter(m => m.showingStatus !== "coming_soon");
   }, [activeTab, movies]);
 
   const visible = useMemo(() => {

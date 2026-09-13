@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { PAGE } from "../constants/app";
-import { loadWallet, saveWallet } from "../data/mockData";
+import { PAGE, REQUEST_STATUS } from "../constants/app";
+import { cinemaService } from "../services/cinemaService";
 import Icon from "../components/common/Icon";
 
 const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
@@ -13,12 +13,100 @@ const TYPE_CONFIG = {
   refund:  { label: "Hoàn tiền",   color: "#38bdf8",       sign: "+" },
 };
 
-function TopUpModal({ onClose, onConfirm }) {
+/* ── Modal nạp tiền: bước 1 chọn số tiền, bước 2 hiện QR thật + nút demo ── */
+function TopUpModal({ onClose, onTopupSuccess }) {
+  const [step, setStep] = useState("amount"); // "amount" | "qr"
   const [amount, setAmount] = useState(100000);
   const [custom, setCustom] = useState("");
-  const [method, setMethod] = useState("qr");
+  const [qr, setQr] = useState(null);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
+  const [confirmStatus, setConfirmStatus] = useState(REQUEST_STATUS.IDLE);
+  const [error, setError] = useState("");
 
   const finalAmount = custom ? Number(custom.replace(/\D/g, "")) : amount;
+
+  const handleShowQr = async () => {
+    if (finalAmount < 10000 || status === REQUEST_STATUS.LOADING) return;
+    setStatus(REQUEST_STATUS.LOADING);
+    setError("");
+    try {
+      const res = await cinemaService.requestWalletTopupQr(finalAmount);
+      setQr(res);
+      setStep("qr");
+      setStatus(REQUEST_STATUS.SUCCESS);
+    } catch (err) {
+      setStatus(REQUEST_STATUS.ERROR);
+      setError(err.message || "Không tạo được mã QR nạp tiền");
+    }
+  };
+
+  const handleConfirmDemo = async () => {
+    if (confirmStatus === REQUEST_STATUS.LOADING) return;
+    setConfirmStatus(REQUEST_STATUS.LOADING);
+    setError("");
+    try {
+      await cinemaService.confirmWalletTopup(finalAmount);
+      setConfirmStatus(REQUEST_STATUS.SUCCESS);
+      onTopupSuccess(finalAmount);
+    } catch (err) {
+      setConfirmStatus(REQUEST_STATUS.ERROR);
+      setError(err.message || "Xác nhận nạp tiền thất bại");
+    }
+  };
+
+  if (step === "qr" && qr) {
+    return (
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="booking-modal" onClick={e => e.stopPropagation()}>
+          <div className="modal-handle" />
+          <div className="modal-title">Quét mã để nạp tiền</div>
+
+          <div style={{ textAlign:"center", marginBottom:16 }}>
+            <div style={{ fontSize:13, color:"var(--text-sub)", marginBottom:4 }}>🏦 {qr.bankName}</div>
+            <div style={{ fontSize:22, fontWeight:900, color:"var(--accent)" }}>{fmt(qr.amount)}</div>
+          </div>
+
+          <div style={{ display:"flex", justifyContent:"center", marginBottom:16 }}>
+            <img src={qr.qrImageUrl} alt="VietQR" width={200} style={{ borderRadius:"var(--radius-sm)" }} />
+          </div>
+
+          <div style={{ background:"var(--bg-card)", borderRadius:"var(--radius-sm)", padding:14, marginBottom:16 }}>
+            {[
+              ["Số tài khoản", qr.accountNumber],
+              ["Chủ tài khoản", qr.accountName],
+              ["Nội dung CK", qr.transferContent],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", fontSize:13 }}>
+                <span style={{ color:"var(--text-sub)" }}>{label}</span>
+                <span style={{ fontWeight:700, color:"var(--text)", textAlign:"right", maxWidth:"60%" }}>{value}</span>
+              </div>
+            ))}
+          </div>
+
+          {error && <div style={{ color:"var(--red)", fontSize:12, textAlign:"center", marginBottom:12 }}>⚠️ {error}</div>}
+
+          <button
+            className="booking-continue-btn"
+            style={{ width:"100%", borderRadius:"var(--radius-sm)", padding:14, marginBottom:8, background:"var(--green)" }}
+            disabled={confirmStatus === REQUEST_STATUS.LOADING}
+            onClick={handleConfirmDemo}
+          >
+            {confirmStatus === REQUEST_STATUS.LOADING ? "Đang xác nhận..." : "✓ Mô phỏng đã chuyển khoản (Demo)"}
+          </button>
+          <button
+            onClick={onClose}
+            style={{
+              width:"100%", padding:12,
+              background:"var(--bg-elevated)", border:"1px solid var(--border)",
+              borderRadius:"var(--radius-sm)", fontWeight:700, fontSize:13, color:"var(--text-sub)",
+            }}
+          >
+            Hủy
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -26,7 +114,6 @@ function TopUpModal({ onClose, onConfirm }) {
         <div className="modal-handle" />
         <div className="modal-title">Nạp tiền vào ví</div>
 
-        {/* Quick amounts */}
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
           {TOP_UP_OPTIONS.map(opt => (
             <button
@@ -47,9 +134,8 @@ function TopUpModal({ onClose, onConfirm }) {
           ))}
         </div>
 
-        {/* Custom amount */}
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:12, color:"var(--text-sub)", marginBottom:6 }}>Hoặc nhập số tiền khác</div>
+        <div style={{ marginBottom:20 }}>
+          <div style={{ fontSize:12, color:"var(--text-sub)", marginBottom:6 }}>Hoặc nhập số tiền khác (tối thiểu 10.000đ)</div>
           <input
             style={{
               width:"100%", background:"var(--bg-card)", border:"1px solid var(--border)",
@@ -60,34 +146,6 @@ function TopUpModal({ onClose, onConfirm }) {
             value={custom}
             onChange={e => setCustom(e.target.value.replace(/\D/g, ""))}
           />
-        </div>
-
-        {/* Method */}
-        <div style={{ marginBottom:20 }}>
-          <div style={{ fontSize:12, color:"var(--text-sub)", marginBottom:8 }}>Phương thức nạp</div>
-          <div style={{ display:"flex", gap:8 }}>
-            {[
-              { id:"qr",   label:"VietQR",        icon:"🏦" },
-              { id:"momo",  label:"MoMo",          icon:"💜" },
-              { id:"zalo",  label:"ZaloPay",       icon:"🔵" },
-            ].map(m => (
-              <button
-                key={m.id}
-                onClick={() => setMethod(m.id)}
-                style={{
-                  flex:1, padding:"10px 0",
-                  borderRadius:"var(--radius-sm)",
-                  border:`2px solid ${method===m.id ? "var(--accent)" : "var(--border)"}`,
-                  background: method===m.id ? "rgba(232,67,58,0.1)" : "var(--bg-card)",
-                  fontSize:12, fontWeight:700,
-                  color: method===m.id ? "var(--accent)" : "var(--text-sub)",
-                }}
-              >
-                <div style={{ fontSize:20, marginBottom:4 }}>{m.icon}</div>
-                {m.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {finalAmount > 0 && (
@@ -103,13 +161,15 @@ function TopUpModal({ onClose, onConfirm }) {
           </div>
         )}
 
+        {error && <div style={{ color:"var(--red)", fontSize:12, textAlign:"center", marginBottom:12 }}>⚠️ {error}</div>}
+
         <button
           className="booking-continue-btn"
           style={{ width:"100%", borderRadius:"var(--radius-sm)", padding:"14px", fontSize:15 }}
-          disabled={finalAmount <= 0}
-          onClick={() => onConfirm(finalAmount)}
+          disabled={finalAmount < 10000 || status === REQUEST_STATUS.LOADING}
+          onClick={handleShowQr}
         >
-          Nạp {finalAmount > 0 ? finalAmount.toLocaleString("vi-VN") + "đ" : ""}
+          {status === REQUEST_STATUS.LOADING ? "Đang tạo mã QR..." : `Nạp ${finalAmount > 0 ? finalAmount.toLocaleString("vi-VN") + "đ" : ""}`}
         </button>
       </div>
     </div>
@@ -117,30 +177,49 @@ function TopUpModal({ onClose, onConfirm }) {
 }
 
 function WalletPage({ onNavigate }) {
-  const [wallet, setWallet] = useState(loadWallet);
+  const [wallet, setWallet] = useState(null);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
   const [showTopUp, setShowTopUp] = useState(false);
   const [toast, setToast] = useState("");
   const [filter, setFilter] = useState("all");
 
-  useEffect(() => { saveWallet(wallet); }, [wallet]);
+  const loadWalletData = () => {
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getWallet()
+      .then(res => { if (alive) { setWallet(res); setStatus(REQUEST_STATUS.SUCCESS); } })
+      .catch(() => { if (alive) setStatus(REQUEST_STATUS.ERROR); });
+    return () => { alive = false; };
+  };
 
-  const handleTopUp = (amount) => {
-    const tx = {
-      id: "W" + Date.now(),
-      type: "topup",
-      amount,
-      desc: "Nạp tiền vào ví H&N",
-      date: new Date().toLocaleString("vi-VN"),
-      status: "success",
-    };
-    setWallet(w => ({
-      balance: w.balance + amount,
-      transactions: [tx, ...w.transactions],
-    }));
+  useEffect(() => loadWalletData(), []);
+
+  const handleTopupSuccess = (amount) => {
     setShowTopUp(false);
+    loadWalletData(); // tải lại ví thật từ server thay vì tự cộng ở client
     setToast(`Nạp thành công ${amount.toLocaleString("vi-VN")}đ`);
     setTimeout(() => setToast(""), 3000);
   };
+
+  if (status === REQUEST_STATUS.LOADING || !wallet) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải ví...
+        </div>
+      </div>
+    );
+  }
+
+  if (status === REQUEST_STATUS.ERROR) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", marginBottom: 16 }}>😕 Không tải được ví.</div>
+        <button className="booking-continue-btn" onClick={loadWalletData}>Thử lại</button>
+      </div>
+    );
+  }
 
   const filtered = wallet.transactions.filter(t =>
     filter === "all" || t.type === filter
@@ -148,7 +227,6 @@ function WalletPage({ onNavigate }) {
 
   return (
     <div className="page-scroll">
-      {/* Top bar */}
       <div className="top-bar">
         <button className="top-bar-icon-btn" onClick={() => onNavigate(PAGE.PROFILE)}>
           <Icon name="back" size={20} />
@@ -156,7 +234,6 @@ function WalletPage({ onNavigate }) {
         <span className="top-bar-title">Ví H&N Cinema</span>
       </div>
 
-      {/* Balance card */}
       <div style={{
         margin:"16px 16px 0",
         background:"linear-gradient(135deg, #1a0a0a 0%, #2a1010 100%)",
@@ -194,7 +271,6 @@ function WalletPage({ onNavigate }) {
         </div>
       </div>
 
-      {/* Filter tabs */}
       <div style={{ display:"flex", gap:8, padding:"16px 16px 0", overflowX:"auto", scrollbarWidth:"none" }}>
         {[
           { id:"all",     label:"Tất cả" },
@@ -219,7 +295,6 @@ function WalletPage({ onNavigate }) {
         ))}
       </div>
 
-      {/* Transaction list */}
       <div style={{ padding:"12px 0" }}>
         <div style={{ fontSize:13, fontWeight:700, color:"var(--text-sub)", padding:"0 16px 10px" }}>
           Lịch sử giao dịch ({filtered.length})
@@ -264,7 +339,6 @@ function WalletPage({ onNavigate }) {
         })}
       </div>
 
-      {/* Toast */}
       {toast && (
         <div style={{
           position:"fixed", bottom:"calc(var(--nav-h) + 16px)", left:"50%", transform:"translateX(-50%)",
@@ -276,7 +350,7 @@ function WalletPage({ onNavigate }) {
         </div>
       )}
 
-      {showTopUp && <TopUpModal onClose={() => setShowTopUp(false)} onConfirm={handleTopUp} />}
+      {showTopUp && <TopUpModal onClose={() => setShowTopUp(false)} onTopupSuccess={handleTopupSuccess} />}
     </div>
   );
 }

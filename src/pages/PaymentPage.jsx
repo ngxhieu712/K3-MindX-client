@@ -1,61 +1,46 @@
 import { useEffect, useState } from "react";
-import { DEFAULTS, REQUEST_STATUS, formatMoney } from "../constants/app";
+import { REQUEST_STATUS } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
-import { vouchers, loadWallet } from "../data/mockData";
-import VoucherBox from "../components/common/VoucherBox";
 import Icon from "../components/common/Icon";
-
-const COMBOS = [
-  { id: "none",  icon: "🚫", name: "Không",         desc: "",                              price: 0 },
-  { id: "small", icon: "🍿", name: "Combo nhỏ",     desc: "1 bắp + 1 nước 32oz",           price: 69 },
-  { id: "big",   icon: "🍿🥤",name: "Combo 2 Big",   desc: "1 bắp + 2 nước ngọt size 27oz", price: 109 },
-  { id: "vip",   icon: "👑", name: "Combo Kim Cương",desc: "1 ly Kim Cương + 1 bắp 69oz",   price: 149 },
-];
 
 const fmt = (n) => n.toLocaleString("vi-VN") + "đ";
 
-function PaymentPage({ movie, selectedTime, selectedSeats, onBack, onPay }) {
-  const [orderData, setOrderData] = useState(null);
-  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
-  const [selectedCombo, setSelectedCombo] = useState("none");
-  const [discount, setDiscount] = useState(null);
+function PaymentPage({ movie, selectedTime, booking, onBack, onPay }) {
   const [payMethod, setPayMethod] = useState("bank"); // "bank" | "wallet"
-  const [wallet, setWallet] = useState(loadWallet);
+  const [wallet, setWallet] = useState(null);
+  const [walletStatus, setWalletStatus] = useState(REQUEST_STATUS.IDLE);
 
   useEffect(() => {
     let alive = true;
-    setStatus(REQUEST_STATUS.LOADING);
-    cinemaService.getCheckoutSummary({ movie, showtime: selectedTime, selectedSeats }).then(res => {
-      if (alive) { setOrderData(res); setStatus(REQUEST_STATUS.SUCCESS); }
-    });
+    setWalletStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getWallet()
+      .then(w => { if (alive) { setWallet(w); setWalletStatus(REQUEST_STATUS.SUCCESS); } })
+      .catch(() => { if (alive) setWalletStatus(REQUEST_STATUS.ERROR); });
     return () => { alive = false; };
-  }, [movie, selectedTime, selectedSeats]);
+  }, []);
 
-  // Reload wallet mỗi khi component mount
-  useEffect(() => { setWallet(loadWallet()); }, []);
-
-  if (status === REQUEST_STATUS.LOADING || !orderData) {
+  // Không có booking hợp lệ (vd người dùng vào thẳng trang này bằng cách nào
+  // đó bất thường) — hiếm khi xảy ra vì BookingPage luôn tạo booking trước khi
+  // điều hướng tới đây, nhưng vẫn cần chặn để không hiện giá 0đ/undefined.
+  if (!booking) {
     return (
-      <div className="page-scroll" style={{ paddingTop:60 }}>
-        <div className="loading-state">
-          <div className="loading-spinner" />
-          Đang tải thông tin...
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", marginBottom: 16 }}>
+          Không tìm thấy thông tin đặt vé. Vui lòng quay lại chọn ghế.
         </div>
+        <button className="booking-continue-btn" onClick={onBack}>Quay lại</button>
       </div>
     );
   }
 
-  const combo = COMBOS.find(c => c.id === selectedCombo);
-  const seatTotal = selectedSeats.length * DEFAULTS.VIP_SEAT_PRICE_THOUSAND * 1000;
-  const comboTotal = (combo?.price ?? 0) * 1000;
-  const subTotal = seatTotal + comboTotal;
-  const discountAmt = discount
-    ? discount.type === "percent"
-      ? Math.round(subTotal * discount.discount / 100)
-      : discount.discount * 1000
-    : 0;
-  const grandTotal = Math.max(0, subTotal - discountAmt);
-  const canPayWallet = wallet.balance >= grandTotal;
+  const seatLabels = booking.seatDetails?.map(s => s.seatName) ?? [];
+  // LƯU Ý: bỏ combo/voucher khỏi trang này — trước đây chúng chỉ cộng/trừ ở
+  // client mà không hề được server biết tới, nên số tiền hiển thị ở đây có thể
+  // KHÁC số tiền thật sự bị trừ ví/yêu cầu chuyển khoản (booking.totalAmount).
+  // Giữ nguyên combo/voucher như cũ sẽ tạo ra 1 lỗi thanh toán sai số tiền thật
+  // — nằm ngoài 4 yêu cầu gốc nên tạm ẩn cho tới khi có API tính giá kèm combo/voucher.
+  const grandTotal = booking.totalAmount; // giá thật theo đúng loại ghế, tính sẵn khi giữ ghế (B3)
+  const canPayWallet = walletStatus === REQUEST_STATUS.SUCCESS && wallet.balance >= grandTotal;
 
   return (
     <div className="payment-page page-scroll">
@@ -76,37 +61,15 @@ function PaymentPage({ movie, selectedTime, selectedSeats, onBack, onPay }) {
           <div>
             <div className="payment-movie-title">{movie.title}</div>
             <div className="payment-movie-meta">
-              <span>{orderData.format}</span><br />
-              <span>📅 {orderData.date}</span><br />
+              {booking.format && <><span>{booking.format}</span><br /></>}
+              <span>📅 {booking.date}</span><br />
               <span>⏰ {selectedTime}</span><br />
-              <span>🏛 {orderData.cinemaName}</span><br />
-              <span>💺 {selectedSeats.join(", ")}</span>
+              <span>🏛 {booking.cinema}</span><br />
+              <span>💺 {seatLabels.join(", ")}</span>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Combo */}
-      <div className="payment-card">
-        <div className="payment-section-title">🍿 Thêm bắp nước</div>
-        <div className="combo-select-row">
-          {COMBOS.map(c => (
-            <button
-              key={c.id}
-              className={`combo-select-card${selectedCombo===c.id?" active":""}`}
-              onClick={() => setSelectedCombo(c.id)}
-            >
-              <div className="combo-select-card-icon">{c.icon}</div>
-              <div className="combo-select-card-name">{c.name}</div>
-              {c.price > 0 && <div className="combo-select-card-price">{c.price}K</div>}
-            </button>
-          ))}
-        </div>
-        {combo?.desc && <div style={{ fontSize:12, color:"var(--text-sub)", marginTop:4 }}>{combo.desc}</div>}
-      </div>
-
-      {/* Voucher */}
-      <VoucherBox cinemaName={orderData.cinemaName} vouchers={vouchers} onApply={setDiscount} />
 
       {/* ── Phương thức thanh toán ── */}
       <div className="payment-card">
@@ -133,7 +96,7 @@ function PaymentPage({ movie, selectedTime, selectedSeats, onBack, onPay }) {
             <div style={{ flex:1 }}>
               <div style={{ fontSize:14, fontWeight:700, color:"var(--text)" }}>Ví H&N Cinema</div>
               <div style={{ fontSize:12, marginTop:2, color: canPayWallet ? "var(--green)" : "var(--red)" }}>
-                Số dư: {fmt(wallet.balance)}
+                Số dư: {wallet ? fmt(wallet.balance) : "..."}
                 {!canPayWallet && " — Không đủ tiền"}
               </div>
             </div>
@@ -182,21 +145,9 @@ function PaymentPage({ movie, selectedTime, selectedSeats, onBack, onPay }) {
       <div className="payment-card">
         <div className="payment-section-title">Chi tiết thanh toán</div>
         <div className="payment-row">
-          <span className="payment-row-label">Ghế ({selectedSeats.length} × {DEFAULTS.VIP_SEAT_PRICE_THOUSAND}K)</span>
-          <span className="payment-row-value">{fmt(seatTotal)}</span>
+          <span className="payment-row-label">Ghế ({seatLabels.length} ghế)</span>
+          <span className="payment-row-value">{fmt(grandTotal)}</span>
         </div>
-        {comboTotal > 0 && (
-          <div className="payment-row">
-            <span className="payment-row-label">{combo.name}</span>
-            <span className="payment-row-value">{fmt(comboTotal)}</span>
-          </div>
-        )}
-        {discountAmt > 0 && (
-          <div className="payment-row">
-            <span className="payment-row-label">Giảm giá ({discount.code})</span>
-            <span className="payment-row-value" style={{ color:"var(--green)" }}>-{fmt(discountAmt)}</span>
-          </div>
-        )}
         <div className="payment-total-row">
           <span>Tổng cộng</span>
           <span>{fmt(grandTotal)}</span>
@@ -208,7 +159,7 @@ function PaymentPage({ movie, selectedTime, selectedSeats, onBack, onPay }) {
         className="booking-continue-btn"
         style={{ width:"100%", borderRadius:"var(--radius-sm)", padding:16, fontSize:15, margin:"0 0 16px" }}
         disabled={payMethod==="wallet" && !canPayWallet}
-        onClick={() => onPay(grandTotal, payMethod, selectedSeats, movie)}
+        onClick={() => onPay(grandTotal, payMethod, seatLabels, movie)}
       >
         {payMethod==="wallet" ? "💳 " : "🏦 "}
         Thanh toán {fmt(grandTotal)}

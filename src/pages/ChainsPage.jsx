@@ -1,17 +1,28 @@
-import { useState } from "react";
-import { chains } from "../data/mockData";
-import { PAGE } from "../constants/app";
+import { useEffect, useState } from "react";
+import { cinemaService } from "../services/cinemaService";
+import { PAGE, REQUEST_STATUS } from "../constants/app";
 import Icon from "../components/common/Icon";
 
 const ALL = "all";
 
 function ChainsPage({ onSelectChain, onNavigate }) {
+  const [chains, setChains] = useState([]);
+  const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
   const [activeChain, setActiveChain] = useState(ALL);
   const [search, setSearch] = useState("");
   const [showLocation, setShowLocation] = useState(true);
   const [favorites, setFavorites] = useState(() => {
     try { return JSON.parse(localStorage.getItem("hn_favorites") || "[]"); } catch { return []; }
   });
+
+  useEffect(() => {
+    let alive = true;
+    setStatus(REQUEST_STATUS.LOADING);
+    cinemaService.getChains().then(res => {
+      if (alive) { setChains(res); setStatus(REQUEST_STATUS.SUCCESS); }
+    });
+    return () => { alive = false; };
+  }, []);
 
   const toggleFav = (cinemaId, e) => {
     e.stopPropagation();
@@ -37,6 +48,17 @@ function ChainsPage({ onSelectChain, onNavigate }) {
       ),
     }))
     .filter(c => c.cinemas.length > 0);
+
+  if (status === REQUEST_STATUS.LOADING && chains.length === 0) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60 }}>
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          Đang tải danh sách rạp...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="chains-page page-scroll">

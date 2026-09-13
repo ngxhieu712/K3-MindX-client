@@ -1,104 +1,185 @@
-import { cinemas, dates, movies, posters, times } from "../data/mockData";
-import { BOOKING, DEFAULTS, UI_TEXT } from "../constants/app";
+import { apiClient } from "./apiClient";
 
-const waitForMockResponse = (payload) =>
-  new Promise((resolve) => {
-    window.setTimeout(() => resolve(payload), DEFAULTS.MOCK_REQUEST_DELAY_MS);
-  });
+// ── Trình bày (logo/mô tả hãng rạp) ──────────────────────────────────────
+// CinemaBrand trong DB chỉ lưu name/slug/logoUrl — không có emoji/tagline
+// marketing. Bảng nhỏ này chỉ để trang trí UI, KHÔNG ảnh hưởng dữ liệu nghiệp
+// vụ (phim/rạp/suất chiếu/ghế đều là dữ liệu thật từ server).
+const CHAIN_PRESENTATION = {
+  Beta: { logo: "🎥", description: "Chuỗi rạp chiếu phim Việt Nam với giá vé bình dân nhất", promoText: "Vé từ 50K/vé 2D mỗi thứ 2" },
+  CGV: { logo: "🎬", description: "Hệ thống rạp chiếu phim Hàn Quốc hàng đầu Việt Nam", promoText: "Giảm 30% vé 2D Thứ 6, T7, CN" },
+  Galaxy: { logo: "⭐", description: "Hệ thống rạp phim chất lượng cao với công nghệ âm thanh đỉnh" },
+  Lotte: { logo: "🍀", description: "Rạp chiếu phim Hàn Quốc với không gian sang trọng, hiện đại" },
+  Cinestar: { logo: "💫", description: "Rạp chiếu phim giá rẻ, chất lượng tốt cho mọi gia đình" },
+};
+const DEFAULT_CHAIN_PRESENTATION = { logo: "🎬", description: "" };
 
-const buildSeatRows = () =>
-  Array.from({ length: DEFAULTS.SEAT_ROWS }, (_, rowIndex) =>
-    Array.from(
-      { length: DEFAULTS.SEATS_PER_ROW },
-      (_, columnIndex) =>
-        `${String.fromCharCode("A".charCodeAt(0) + rowIndex)}${columnIndex + 1}`,
-    ),
-  );
+const WEEKDAY_LABELS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+function mapMovie(m) {
+  if (!m) return null;
+  return {
+    id: m._id,
+    title: m.title,
+    genre: m.genre,
+    length: m.duration,
+    age: m.age,
+    poster: m.poster,
+    showingStatus: m.showingStatus, // "now_showing" | "coming_soon"
+    releaseDate: m.releaseDate,
+  };
+}
+
+function mapCinema(c) {
+  return {
+    id: c._id,
+    name: c.name,
+    address: c.address,
+    color: c.color,
+    chainName: c.brandId?.name || c.chain,
+    chainSlug: c.brandId?.slug || c.chain?.toLowerCase(),
+    districtName: c.districtId?.name || "",
+  };
+}
+
+function formatDateLabel(isoDate) {
+  const d = new Date(isoDate);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return { iso: isoDate, day: `${day}/${month}`, dow: WEEKDAY_LABELS[d.getDay()] };
+}
 
 export const cinemaService = {
+  // GET /api/customer/movies + GET /api/customer/banners
   async getInitialCatalog() {
-    // TODO: Replace this fallback with GET /api/movies, GET /api/cinemas and GET /api/show-dates.
-    return waitForMockResponse({ movies, cinemas, dates, times });
+    const [moviesRes, banners] = await Promise.all([
+      apiClient.get("/movies"),
+      apiClient.get("/banners").catch(() => []), // banner lỗi/thiếu không nên chặn cả trang chủ
+    ]);
+
+    const nowShowing = (moviesRes.nowShowing || []).map(mapMovie);
+    const comingSoon = (moviesRes.comingSoon || []).map(mapMovie);
+    const hotIds = new Set(nowShowing.slice(0, 4).map((m) => m.id));
+    const movies = [...nowShowing, ...comingSoon].map((m) => ({ ...m, hot: hotIds.has(m.id) }));
+
+    return { movies, banners };
   },
 
-  async getCinemaDetails(cinemaName) {
-    // TODO: Replace this fallback with GET /api/cinemas/:cinemaName.
-    return waitForMockResponse({
-      name: cinemaName,
-      image: posters.love,
-      description: UI_TEXT.CINEMA_DESCRIPTION,
-      hotMovies: movies.slice(
-        DEFAULTS.SOLD_SEAT_ROW_INDEX,
-        DEFAULTS.SPECIAL_MOVIE_END_INDEX + 1,
-      ),
-    });
+  // GET /api/customer/cinemas — trả cinema thô đã map, dùng cho mọi trang cần danh sách rạp.
+  async getCinemas() {
+    const cinemas = await apiClient.get("/cinemas");
+    return cinemas.map(mapCinema);
   },
 
-  async getShowtimes({ cinemaName, date }) {
-    // TODO: Replace this fallback with GET /api/showtimes?cinema={cinemaName}&date={date}.
-    const showtimeMovies = movies
-      .slice(0, DEFAULTS.SHOWTIME_MOVIE_COUNT)
-      .map((movie, movieIndex) => ({
-        ...movie,
-        showtimes: times
-          .slice(movieIndex, movieIndex + DEFAULTS.SHOWTIME_COUNT_PER_MOVIE)
-          .map((time, timeIndex) => ({
-            time,
-            availableSeats:
-              DEFAULTS.AVAILABLE_SEAT_BASE +
-              timeIndex * DEFAULTS.AVAILABLE_SEAT_STEP,
-            isHighlighted: timeIndex === DEFAULTS.SELECTED_SHOWTIME_INDEX,
-          })),
-      }));
+  // Gom cinemas theo hãng — phục vụ ChainsPage/ChainDetailPage (thay "chains" mock cũ).
+  async getChains() {
+    const cinemas = await this.getCinemas();
+    const byChain = new Map();
 
-    return waitForMockResponse({ cinemaName, date, movies: showtimeMovies });
+    for (const c of cinemas) {
+      const key = c.chainSlug || c.chainName;
+      if (!byChain.has(key)) {
+        const presentation = CHAIN_PRESENTATION[c.chainName] || DEFAULT_CHAIN_PRESENTATION;
+        byChain.set(key, { id: key, name: c.chainName, color: c.color, ...presentation, cinemas: [] });
+      }
+      byChain.get(key).cinemas.push(c);
+    }
+
+    return Array.from(byChain.values());
   },
 
-  async getSeatLayout({ movieId, showtime }) {
-    // TODO: Replace this fallback with GET /api/showtimes/:showtime/seats and reserve seats on the server.
-    return waitForMockResponse({
-      movieId,
-      showtime,
-      seats: buildSeatRows(),
-      defaultSelectedSeats: BOOKING.DEFAULT_SEATS,
-      cinemaName: BOOKING.CINEMA_NAME,
-      date: BOOKING.DATE,
-      format: BOOKING.FORMAT,
-      holdDuration: BOOKING.HOLD_DURATION,
-    });
+  // GET /api/customer/cinemas/:cinemaId — dùng cho CinemasPage.
+  async getCinemaDetail(cinemaId) {
+    const cinema = await apiClient.get(`/cinemas/${cinemaId}`);
+    return {
+      id: cinema._id,
+      name: cinema.name,
+      address: cinema.address,
+      description: [cinema.address].filter(Boolean),
+      hotMovies: (cinema.featuredMovies || []).map(mapMovie),
+    };
   },
 
-  async getCheckoutSummary({ movie, showtime, selectedSeats }) {
-    // TODO: Replace this fallback with POST /api/checkout/summary and let the server calculate totals.
-    return waitForMockResponse({
-      customer: {
-        name: "Nguyễn Trung Hiếu",
-        phone: "0878939686",
-        email: "trunghieu2kar7@gmail.com",
-      },
-      movie,
-      showtime,
-      selectedSeats,
-      cinemaName: BOOKING.CINEMA_NAME,
-      date: BOOKING.DATE,
-      format: BOOKING.FORMAT,
-      seatPriceThousand: DEFAULTS.VIP_SEAT_PRICE_THOUSAND,
-      combo: {
-        name: "Combo See Mê - Kim cương",
-        description:
-          "TIẾT KIỆM 56K!!! Sở hữu ngay: 1 Ly Kim Cương kèm nước + 1 Bắp (69oz)",
-      },
-    });
+  // GET /api/customer/showtimes/show-dates/:cinemaId — ngày còn suất chiếu khả dụng.
+  async getShowDates(cinemaId) {
+    const isoDates = await apiClient.get(`/showtimes/show-dates/${cinemaId}`);
+    return isoDates.map(formatDateLabel);
   },
 
-  async createQrPayment({ amountThousand }) {
-    // TODO: Replace this fallback with POST /api/payments/qr and use the QR payload returned by the gateway.
-    return waitForMockResponse({
-      amountThousand,
-      transferContent: "Thanh toán hóa đơn 8010810505062121",
-      accountNumber: "9652015644POA986E30",
-      bankName: "Ngân hàng TMCP Đầu tư và Phát triển Việt Nam",
-      expiresIn: BOOKING.PAYMENT_DURATION,
-    });
+  // GET /api/customer/showtimes?cinemaId=&date= — gom theo phim, mỗi phim có mảng suất chiếu thật.
+  async getShowtimes({ cinemaId, date }) {
+    if (!cinemaId || !date) return [];
+    const groups = await apiClient.get(`/showtimes?cinemaId=${cinemaId}&date=${date}`);
+    return groups.map((g) => ({
+      ...mapMovie(g.movie),
+      showtimes: g.showtimes.map((st) => ({
+        id: st._id,
+        time: new Date(st.startTime).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        startTime: st.startTime,
+        format: st.format,
+        price: st.price,
+      })),
+    }));
+  },
+
+  // GET /api/customer/showtimes/:showtimeId/seats — sơ đồ ghế thật của đúng
+  // suất chiếu (ghế đã bán/đang giữ chỗ bởi người khác sẽ có status "unavailable").
+  async getSeatLayout(showtimeId) {
+    const res = await apiClient.get(`/showtimes/${showtimeId}/seats`);
+    return {
+      showtime: res.showtime,
+      movie: mapMovie(res.movie),
+      cinema: res.cinema,
+      auditorium: res.auditorium,
+      rows: res.rows, // [{ row, seats: [{_id, row, number, type, status}] }]
+      totalSeats: res.totalSeats,
+      availableSeats: res.availableSeats,
+    };
+  },
+
+  // POST /api/customer/bookings — giữ ghế thật (yêu cầu đăng nhập). Ném lỗi
+  // (vd 409 nếu ghế vừa bị người khác giữ) để trang gọi tự xử lý/hiện thông báo.
+  async createBookingHold({ showtimeId, seatIds }) {
+    return apiClient.post("/bookings", { showtimeId, seatIds }, { auth: true });
+  },
+
+  // POST /api/customer/payments/bookings/:bookingId/qr — QR chuyển khoản thật
+  // (ảnh VietQR thật, số tiền lấy từ booking đã tính sẵn ở server).
+  async createQrPayment(bookingId) {
+    return apiClient.post(`/payments/bookings/${bookingId}/qr`, {}, { auth: true });
+  },
+
+  // POST /api/customer/payments/bookings/:bookingId/confirm-demo — nút demo
+  // "đã chuyển khoản": chuyển booking pending -> confirmed thật trên server.
+  async confirmBankPaymentDemo(bookingId) {
+    return apiClient.post(`/payments/bookings/${bookingId}/confirm-demo`, {}, { auth: true });
+  },
+
+  // POST /api/customer/payments/bookings/:bookingId/pay-wallet — trừ ví thật.
+  async payBookingWithWallet(bookingId) {
+    return apiClient.post(`/payments/bookings/${bookingId}/pay-wallet`, {}, { auth: true });
+  },
+
+  // ── Ví điện tử (yêu cầu #1) ──
+  async getWallet() {
+    return apiClient.get("/wallet", { auth: true });
+  },
+
+  async requestWalletTopupQr(amount) {
+    return apiClient.post("/wallet/topup/qr", { amount }, { auth: true });
+  },
+
+  async confirmWalletTopup(amount) {
+    return apiClient.post("/wallet/topup/confirm", { amount }, { auth: true });
+  },
+
+  // ── Lịch sử vé thật + yêu cầu hoàn vé thật ──
+  async getMyTickets() {
+    return apiClient.get("/bookings", { auth: true });
+  },
+
+  async requestRefund(bookingId) {
+    return apiClient.post(`/bookings/${bookingId}/refund-request`, {}, { auth: true });
   },
 };
+
+export default cinemaService;

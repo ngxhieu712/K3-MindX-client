@@ -1,21 +1,7 @@
 import { useEffect, useState } from "react";
-import { DEFAULTS, PAGE } from "../constants/app";
-import { banners as mockBanners, reviews } from "../data/mockData";
+import { PAGE } from "../constants/app";
+import { reviews } from "../data/mockData";
 import Icon from "../components/common/Icon";
-
-const STORAGE_KEY = "hn_cinema_banners";
-
-function loadBanners() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const active = parsed.filter(b => b.active).sort((a, b) => a.order - b.order);
-      return active.length > 0 ? active : mockBanners;
-    }
-  } catch {}
-  return mockBanners;
-}
 
 function AgeBadge({ age }) {
   return <span className={`age-badge ${age==="P"?"P":age==="T16"?"T16":""}`}>{age}</span>;
@@ -98,16 +84,13 @@ function MovieRow({ title, movies: list, onBuy, onSeeAll }) {
   );
 }
 
-/* ── Promo banner (auto-slide từ localStorage) ── */
-function PromoBanner() {
-  const [banners, setBanners] = useState(loadBanners);
+/* ── Promo banner (dữ liệu thật từ GET /api/customer/banners) ── */
+function PromoBanner({ banners }) {
   const [cur, setCur] = useState(0);
 
   useEffect(() => {
-    const handler = () => { setBanners(loadBanners()); setCur(0); };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, []);
+    setCur(0);
+  }, [banners]);
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -184,12 +167,12 @@ function PromoCards({ onNavigate }) {
 }
 
 /* ── Main ── */
-function HomePage({ movies: allMovies, onBuy, onNavigate, user }) {
+function HomePage({ movies: allMovies, banners = [], onBuy, onNavigate, user }) {
   const [search, setSearch] = useState("");
 
   const hotMovies  = allMovies.filter(m => m.hot);
-  const nowPlaying = allMovies.slice(0, 6);
-  const comingSoon = allMovies.slice(DEFAULTS.UPCOMING_MOVIE_START_INDEX);
+  const nowPlaying = allMovies.filter(m => m.showingStatus !== "coming_soon");
+  const comingSoon = allMovies.filter(m => m.showingStatus === "coming_soon");
 
   const searchResults = search.trim()
     ? allMovies.filter(m =>
@@ -264,7 +247,7 @@ function HomePage({ movies: allMovies, onBuy, onNavigate, user }) {
         <>
           <FeaturedCarousel hotMovies={hotMovies} onBuy={onBuy} />
           <MovieRow title="🎬 Phim hay đang chiếu" movies={nowPlaying} onBuy={onBuy} onSeeAll={() => onNavigate(PAGE.MOVIES)} />
-          <PromoBanner />
+          <PromoBanner banners={banners} />
           <PromoStrip onNavigate={onNavigate} />
           <PromoCards onNavigate={onNavigate} />
           <MovieRow title="🗓 Phim sắp chiếu" movies={comingSoon} onBuy={onBuy} onSeeAll={() => onNavigate(PAGE.MOVIES)} />

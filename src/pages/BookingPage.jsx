@@ -3,42 +3,94 @@ import { DEFAULTS, REQUEST_STATUS, formatMoney } from "../constants/app";
 import { cinemaService } from "../services/cinemaService";
 import Icon from "../components/common/Icon";
 
-const getSeatState = (label, rowIndex, colIndex, selected) => {
-  if (selected.includes(label)) return "chosen";
-  if (rowIndex === DEFAULTS.SOLD_SEAT_ROW_INDEX && colIndex === DEFAULTS.SOLD_SEAT_COLUMN_INDEX)
-    return "sold";
-  if (rowIndex >= DEFAULTS.RESERVED_SEAT_START_ROW_INDEX && rowIndex <= DEFAULTS.RESERVED_SEAT_END_ROW_INDEX)
-    return "reserved";
-  return "empty";
-};
+function priceForSeatType(type, price) {
+  if (!price) return 0;
+  if (type === "vip") return price.vip ?? price.standard ?? 0;
+  if (type === "couple") return price.couple ?? price.standard ?? 0;
+  return price.standard ?? 0;
+}
 
-function BookingPage({ movie, selectedTime, onNext, onBack }) {
+function BookingPage({ movie, selectedTime, selectedShowtimeId, onNext, onBack }) {
   const [data, setData] = useState(null);
-  const [selected, setSelected] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [status, setStatus] = useState(REQUEST_STATUS.IDLE);
+  const [submitStatus, setSubmitStatus] = useState(REQUEST_STATUS.IDLE);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadSeats = () => {
+    if (!selectedShowtimeId) return;
     let alive = true;
     setStatus(REQUEST_STATUS.LOADING);
-    cinemaService.getSeatLayout({ movieId: movie.id, showtime: selectedTime }).then(res => {
-      if (alive) {
+    setError("");
+    cinemaService.getSeatLayout(selectedShowtimeId)
+      .then(res => {
+        if (!alive) return;
         setData(res);
-        setSelected(res.defaultSelectedSeats);
+        setSelectedIds([]); // sơ đồ thật, không còn chọn sẵn ghế nào (bỏ H7/H8/H9 hard-code cũ)
         setStatus(REQUEST_STATUS.SUCCESS);
-      }
-    });
+      })
+      .catch(err => {
+        if (!alive) return;
+        setError(err.message || "Không tải được sơ đồ ghế");
+        setStatus(REQUEST_STATUS.ERROR);
+      });
     return () => { alive = false; };
-  }, [movie.id, selectedTime]);
+  };
 
-  const total = useMemo(() => selected.length * DEFAULTS.VIP_SEAT_PRICE_THOUSAND, [selected]);
+  // loadSeats đọc selectedShowtimeId hiện tại qua closure, không cần liệt kê
+  // thêm (và nó được định nghĩa lại mỗi render nên đưa vào deps sẽ gây lặp vô ích).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => loadSeats(), [selectedShowtimeId]);
 
-  const toggleSeat = (label) => {
-    setSelected(cur => {
-      if (cur.includes(label)) return cur.filter(s => s !== label);
+  const allSeats = useMemo(() => (data?.rows || []).flatMap(r => r.seats), [data]);
+  const selectedSeats = useMemo(
+    () => allSeats.filter(s => selectedIds.includes(s._id)),
+    [allSeats, selectedIds],
+  );
+  const total = useMemo(
+    () => selectedSeats.reduce((sum, s) => sum + priceForSeatType(s.type, data?.showtime?.price), 0),
+    [selectedSeats, data],
+  );
+
+  const toggleSeat = (seat) => {
+    if (seat.status === "unavailable") return;
+    setSelectedIds(cur => {
+      if (cur.includes(seat._id)) return cur.filter(id => id !== seat._id);
       if (cur.length >= DEFAULTS.MAX_SELECTED_SEATS) return cur;
-      return [...cur, label];
+      return [...cur, seat._id];
     });
   };
+
+  const handleContinue = async () => {
+    if (selectedIds.length === 0 || submitStatus === REQUEST_STATUS.LOADING) return;
+    setSubmitStatus(REQUEST_STATUS.LOADING);
+    setError("");
+    try {
+      const booking = await cinemaService.createBookingHold({
+        showtimeId: selectedShowtimeId,
+        seatIds: selectedIds,
+      });
+      setSubmitStatus(REQUEST_STATUS.SUCCESS);
+      onNext({ ...booking, format: data.showtime.format });
+    } catch (err) {
+      setSubmitStatus(REQUEST_STATUS.ERROR);
+      // 409: ghế vừa bị người khác giữ/mua trong lúc mình đang chọn -> tải lại
+      // sơ đồ ghế thật để thấy đúng ghế nào còn trống, không cho thanh toán nhầm.
+      setError(err.message || "Không đặt được ghế, vui lòng thử lại");
+      if (err.status === 409) loadSeats();
+    }
+  };
+
+  if (!selectedShowtimeId) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", marginBottom: 16 }}>
+          Không xác định được suất chiếu. Vui lòng quay lại chọn suất chiếu.
+        </div>
+        <button className="booking-continue-btn" onClick={onBack}>Quay lại</button>
+      </div>
+    );
+  }
 
   if (status === REQUEST_STATUS.LOADING || !data) {
     return (
@@ -47,6 +99,15 @@ function BookingPage({ movie, selectedTime, onNext, onBack }) {
           <div className="loading-spinner" />
           Đang tải sơ đồ ghế...
         </div>
+      </div>
+    );
+  }
+
+  if (status === REQUEST_STATUS.ERROR) {
+    return (
+      <div className="page-scroll" style={{ paddingTop: 60, padding: 24, textAlign: "center" }}>
+        <div style={{ color: "var(--text-muted)", marginBottom: 16 }}>😕 {error}</div>
+        <button className="booking-continue-btn" onClick={loadSeats}>Thử lại</button>
       </div>
     );
   }
@@ -78,9 +139,11 @@ function BookingPage({ movie, selectedTime, onNext, onBack }) {
         <div>
           <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{movie.title}</div>
           <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2 }}>
-            {data.format} · {data.date} · {selectedTime}
+            {data.showtime.format} · {selectedTime}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>{data.cinemaName}</div>
+          <div style={{ fontSize: 12, color: "var(--text-sub)" }}>
+            {data.cinema?.name} · {data.auditorium?.name}
+          </div>
         </div>
       </div>
 
@@ -90,18 +153,22 @@ function BookingPage({ movie, selectedTime, onNext, onBack }) {
         <div className="screen-label">MÀN HÌNH</div>
       </div>
 
-      {/* seat map */}
+      {/* seat map (dữ liệu ghế thật theo đúng phòng của suất chiếu này) */}
       <div className="seat-map-wrap">
-        {data.seats.map((row, ri) => (
-          <div className="seat-row" key={ri}>
-            {row.map((label, ci) => {
-              const state = getSeatState(label, ri, ci, selected);
+        {data.rows.map(({ row, seats }) => (
+          <div className="seat-row" key={row}>
+            {seats.map((seat) => {
+              const label = `${seat.row}${seat.number}`;
+              const state = seat.status === "unavailable"
+                ? "sold"
+                : selectedIds.includes(seat._id) ? "chosen" : "empty";
               return (
                 <button
-                  key={label}
-                  className={`seat ${state}`}
-                  onClick={() => state !== "sold" && state !== "reserved" && toggleSeat(label)}
-                  title={label}
+                  key={seat._id}
+                  className={`seat ${state}${seat.type === "vip" ? " vip" : ""}`}
+                  disabled={seat.status === "unavailable"}
+                  onClick={() => toggleSeat(seat)}
+                  title={`${label}${seat.type === "vip" ? " (VIP)" : ""}`}
                 />
               );
             })}
@@ -112,10 +179,9 @@ function BookingPage({ movie, selectedTime, onNext, onBack }) {
       {/* legend */}
       <div className="seat-legend">
         {[
-          ["empty",    "Trống"],
-          ["chosen",   "Đang chọn"],
-          ["sold",     "Đã bán"],
-          ["reserved", "Giữ trước"],
+          ["empty", "Trống"],
+          ["chosen", "Đang chọn"],
+          ["sold", "Đã bán / đang được giữ"],
         ].map(([cls, lbl]) => (
           <div key={cls} className="legend-item">
             <div className={`legend-dot ${cls}`} />
@@ -124,24 +190,34 @@ function BookingPage({ movie, selectedTime, onNext, onBack }) {
         ))}
       </div>
 
+      <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: -4 }}>
+        Còn {data.availableSeats}/{data.totalSeats} ghế trống
+      </div>
+
+      {error && submitStatus === REQUEST_STATUS.ERROR && (
+        <div style={{ margin: "8px 16px 0", color: "var(--red)", fontSize: 13, textAlign: "center" }}>
+          ⚠️ {error}
+        </div>
+      )}
+
       {/* bottom summary bar */}
       <div className="booking-summary-bar">
         <div className="booking-summary-info">
           <div className="booking-summary-seats">
-            {selected.length > 0
-              ? `Ghế: ${selected.join(", ")}`
+            {selectedSeats.length > 0
+              ? `Ghế: ${selectedSeats.map(s => `${s.row}${s.number}`).join(", ")}`
               : "Chưa chọn ghế nào"}
           </div>
           <div className="booking-summary-price">
-            Tổng: <span>{formatMoney(total)}</span>
+            Tổng: <span>{formatMoney(Math.round(total / 1000))}</span>
           </div>
         </div>
         <button
           className="booking-continue-btn"
-          disabled={selected.length === 0}
-          onClick={() => onNext(selected)}
+          disabled={selectedIds.length === 0 || submitStatus === REQUEST_STATUS.LOADING}
+          onClick={handleContinue}
         >
-          Tiếp tục
+          {submitStatus === REQUEST_STATUS.LOADING ? "Đang giữ ghế..." : "Tiếp tục"}
         </button>
       </div>
     </div>
