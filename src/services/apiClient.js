@@ -6,7 +6,9 @@
 // "/api/auth". File này tự thêm "/api/customer".
 import { tokenStore } from "../../lib/tokenStore";
 
-const API_ORIGIN = import.meta.env.VITE_API_URL || "http://localhost:8080";
+const API_ORIGIN =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:8080" : "https://k3-mindx-server.onrender.com");
 const API_BASE_URL = `${API_ORIGIN}/api/customer`;
 
 async function request(path, options = {}) {
