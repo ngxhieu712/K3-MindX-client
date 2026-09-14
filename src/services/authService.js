@@ -1,7 +1,9 @@
 // đầu file, cùng chỗ với các import khác
 import { AUTH_MODE } from "../constants/app.js";
 
-const API_URL = import.meta.env.VITE_API_URL || "";
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:8080" : "https://k3-mindx-server.onrender.com");
 const BASE_URL = `${API_URL}/api/auth`;
 
 export const authService = {
